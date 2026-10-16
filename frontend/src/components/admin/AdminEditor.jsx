@@ -52,7 +52,7 @@ export const AdminEditor = ({ target, onClose }) => {
   return (
     <Sheet open={!!target} onOpenChange={(o) => !o && onClose()} testId="admin-editor-sheet" title={target?.mode === "new" ? (opt ? `Pubblica: ${opt.title}` : "Inserimento diretto") : "Modifica contenuto"} subtitle={target?.mode === "new" ? "Pubblicato subito, senza coda" : null}>
       {!opt ? (
-        target?.mode === "edit" ? <p className="text-sm text-zinc-400">Categoria o sezione nascosta: riattivala per modificare.</p> : ai ? <AiAssistant options={list} onUse={({ opt: o, form: f }) => { setOpt(o); setForm(f); }} /> : <><AiEntryCard onClick={() => setAi(true)} /><KindPicker options={list} onPick={(o) => { setOpt(o); setForm(emptyFor(o)); }} /></>
+        target?.mode === "edit" ? <p className="text-sm text-zinc-400">Categoria o sezione nascosta: riattivala per modificare.</p> : ai ? <div className="flex flex-col gap-3"><button data-testid="admin-ai-back-button" onClick={() => setAi(false)} className="w-fit text-sm text-zinc-400">← Scegli a mano</button><AiAssistant options={list} onUse={({ opt: o, form: f }) => { setOpt(o); setForm(f); }} /></div> : <><AiEntryCard onClick={() => setAi(true)} /><KindPicker options={list} onPick={(o) => { setOpt(o); setForm(emptyFor(o)); }} /></>
       ) : (
         <div className="flex flex-col gap-5">
           <EntryForm opt={opt} form={form} setForm={setForm} />

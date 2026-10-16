@@ -10,6 +10,9 @@ import json
 import base64
 import asyncio
 import httpx
+import socket
+import ipaddress
+from urllib.parse import urlparse, urljoin
 import copy
 import uuid
 import secrets
@@ -1720,17 +1723,35 @@ async def admin_ai_moderate(entity: str, eid: str, a=Depends(require_admin)):
     return review
 
 
-def safe_host(url: str) -> bool:
-    host = (re.match(r"https?://([^/:?#]+)", url) or [None, ""])[1].lower()
-    return bool(host) and not re.match(r"^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|0\.|\[)", host) and "." in host
+async def public_url(url: str) -> bool:
+    try:
+        p = urlparse(url)
+        if p.scheme not in ("http", "https") or not p.hostname or p.username or p.password:
+            return False
+        infos = await run_in_threadpool(socket.getaddrinfo, p.hostname, p.port or (443 if p.scheme == "https" else 80))
+        return bool(infos) and all(ipaddress.ip_address(x[4][0]).is_global for x in infos)
+    except Exception:
+        return False
+
+
+async def safe_get(url: str, timeout=8):
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, headers={"User-Agent": "Mozilla/5.0 (compatible; CosaFarePotenzaBot/1.0)"}) as c:
+        for _ in range(4):
+            if not await public_url(url):
+                return None
+            r = await c.get(url)
+            if r.is_redirect and r.headers.get("location"):
+                url = urljoin(url, r.headers["location"])
+                continue
+            return r if len(r.content) < 8 * 1024 * 1024 else None
+    return None
 
 
 async def fetch_link(url: str):
-    if not safe_host(url):
-        return None
     try:
-        async with httpx.AsyncClient(timeout=8, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (compatible; CosaFarePotenzaBot/1.0)"}) as c:
-            r = await c.get(url)
+        r = await safe_get(url)
+        if r is None:
+            return None
         html = r.text[:400_000]
     except Exception:
         return None
@@ -1744,15 +1765,15 @@ async def fetch_link(url: str):
 async def image_b64(url: str):
     try:
         if url.startswith("/api/files/"):
-            data, _ = await run_in_threadpool(get_object, url[len("/api/files/"):])
-        elif safe_host(url):
-            async with httpx.AsyncClient(timeout=10, follow_redirects=True) as c:
-                r = await c.get(url)
-            if not r.headers.get("content-type", "").startswith("image/"):
+            path = url[len("/api/files/"):]
+            if not await db.files.find_one({"storage_path": path, "is_deleted": False}):
+                return None
+            data, _ = await run_in_threadpool(get_object, path)
+        else:
+            r = await safe_get(url, timeout=10)
+            if r is None or not r.headers.get("content-type", "").startswith("image/"):
                 return None
             data = r.content
-        else:
-            return None
         return base64.b64encode(data).decode() if len(data) < 6 * 1024 * 1024 else None
     except Exception as e:
         logger.warning(f"AI image fetch failed: {e}")
@@ -1806,13 +1827,15 @@ async def clean_draft(d):
         fields = {k: (v if k == "themes" else str(v or "")) for k, v in f.items() if k in ITEM_KEYS and k != "kind"}
         if "themes" in fields:
             await clean_themes(fields)
-        return {"target": "item", "kind": d["kind"], "fields": fields, "missing": d.get("missing") or []}
+        miss = [x for x in ("title", "start_date" if k in DATED else "") if x and not fields.get(x)]
+        return {"target": "item", "kind": d["kind"], "fields": fields, "missing": miss}
     sec = await db.sections.find_one({"slug": d.get("section"), "hidden": {"$ne": True}})
     if not sec:
         return None
     keys = {x["key"] for x in sec.get("fields", []) if x.get("key")}
     return {"target": "post", "section": sec["slug"], "tag": d.get("tag") if d.get("tag") in sec.get("tags", []) else "",
-            "fields": {k: str(v or "") for k, v in f.items() if k in keys}, "missing": d.get("missing") or []}
+            "fields": {k: str(v or "") for k, v in f.items() if k in keys},
+            "missing": [x["label"] for x in sec.get("fields", []) if x.get("required") and not str(f.get(x.get("key")) or "").strip()]}
 
 
 class AssistantIn(BaseModel):

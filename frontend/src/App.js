@@ -22,7 +22,7 @@ function Shell() {
   const [addOpen, setAddOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [prefill, setPrefill] = useState([]);
-  const { user } = useAuth();
+  const { user, ready } = useAuth();
   const cfg = useConfig();
   useEffect(() => { if (cfg?.app_name) document.title = cfg.app_name; }, [cfg?.app_name]);
   useEffect(() => {
@@ -54,7 +54,7 @@ function Shell() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
-        <BottomNav onPlus={() => { setPrefill([]); user ? setAddOpen(true) : setLoginOpen(true); }} />
+        <BottomNav onPlus={() => { if (!ready) return; setPrefill([]); user ? setAddOpen(true) : setLoginOpen(true); }} />
         <LoginPrompt open={loginOpen} onOpenChange={setLoginOpen} />
         <AddSheet open={addOpen} onOpenChange={setAddOpen} prefillThemes={prefill} />
       </div>

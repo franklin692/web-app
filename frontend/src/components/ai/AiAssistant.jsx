@@ -114,7 +114,7 @@ export const AiAssistant = ({ options, onUse }) => {
           {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
         </button>
         <textarea data-testid="ai-input" rows={1} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), send())}
-          placeholder="Incolla un link o descrivi l'evento…" className="max-h-28 min-h-[44px] flex-1 resize-none rounded-xl border border-white/10 bg-[#0B0B0F] px-3 py-2.5 text-[15px] text-white placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none" />
+          placeholder="Link, testo o locandina…" className="max-h-28 min-h-[44px] flex-1 resize-none rounded-xl border border-white/10 bg-[#0B0B0F] px-3 py-2.5 text-[15px] text-white placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none" />
         <button data-testid="ai-send-button" onClick={send} disabled={busy} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-violet-600 to-pink-600 disabled:opacity-50" aria-label="Invia">
           {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
         </button>

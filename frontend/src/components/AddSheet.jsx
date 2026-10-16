@@ -84,24 +84,30 @@ export const AddSheet = ({ open, onOpenChange, prefillThemes = [] }) => {
           <p data-testid="add-success-message" className="text-base text-zinc-200">{done}</p>
           <PrimaryButton data-testid="add-success-close" onClick={() => onOpenChange(false)}>Chiudi</PrimaryButton>
         </div>
-      ) : !opt && ai ? (
-        <div className="flex flex-col gap-3">
+      ) : (
+        <>
+        {ai && (
+        <div className={opt ? "hidden" : "flex flex-col gap-3"}>
           <button data-testid="ai-back-button" onClick={() => setAi(false)} className="inline-flex w-fit items-center gap-1 text-sm text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /> Scegli a mano</button>
           <AiAssistant options={options} onUse={({ opt: o, form: f }) => { setOpt(o); setForm(f); toast.success("Bozza caricata: controlla e invia"); }} />
         </div>
-      ) : !opt ? (
+        )}
+        {!opt && !ai && (
         <>
         <AiEntryCard onClick={() => setAi(true)} />
         <KindPicker options={options} onPick={(o) => { setOpt(o); setForm(o.type === "item" ? { ...emptyFor(o), themes: prefillThemes } : emptyFor(o)); }} />
         </>
-      ) : (
+        )}
+        {opt && (
         <div className="flex flex-col gap-5">
-          <button data-testid="add-back-button" onClick={() => setOpt(null)} className="inline-flex w-fit items-center gap-1 text-sm text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /> Cambia tipo</button>
+          <button data-testid="add-back-button" onClick={() => setOpt(null)} className="inline-flex w-fit items-center gap-1 text-sm text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /> {ai ? "Torna alla chat con Lucy" : "Cambia tipo"}</button>
           <EntryForm opt={opt} form={form} setForm={setForm} />
           <PrimaryButton data-testid="add-submit-button" onClick={submit} disabled={busy}>
             {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />} {opt.type === "post" && !opt.section.requires_approval ? "Pubblica" : "Invia per Approvazione"}
           </PrimaryButton>
         </div>
+        )}
+        </>
       )}
     </Sheet>
   );

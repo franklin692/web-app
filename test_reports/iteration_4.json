@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 4: tested the Gemini AI features (backend + frontend, mobile 390x844). New suite test_ai_api.py passed 9/9. Assistant results: guests get 401 and an empty message gets 422. The SSE stream sends delta events and then a done event with a draft; the <<<BOZZA>>> separator never leaks into the text. Free text gave an item/event draft with start_date 2026-10-23 and start_time 22:00. In the same session, 'cambia orario alle 23' changed only start_time to 23:00, and ai_chats stored 4 messages. A passaggi text gave a post draft with from/to/date/time/seats/contribution and the 'Offro passaggio' tag. A real JPEG poster uploaded via /api/upload was read correctly (title 'Jazz Night Potenza', date 2026-10-24, time 21:30, price 10€, Teatro Stabile) and fields.image_url equals the uploaded url. A link message was handled without errors. Moderation results: a harmless passaggi post got ai_review low and stayed approved. A high-risk unisciti post got ai_review high and was moved to pending with ai_held=true, and it shows up in /admin/pending with ai_review. A submitted item got its review within the wait time. POST /admin/ai/moderate/item/{id} returned a review, and guests/non-admins got 401. Frontend: guest + shows the login prompt. Logged-in user flow worked end to end: + -> add-ai-button -> chat with streaming reply -> ai-draft-card -> ai-use-draft fills the form (title, category 'DJ Set / Discoteca', town, zone, date, time, address, price, description) -> add-submit-button -> success. Poster upload through ai-attach-button/ai-file-input showed the preview, produced a correct draft, and the form had the image preview set. Admin: the Coda tab shows ai-review-{id} badges (ok / a rischio / analisi in corso) and ai-analyze-{id} buttons; re-analysis was confirmed in the DB (review timestamp updated). AdminEditor (admin-new-button -> add-ai-button -> Lucy -> admin-editor-save) published immediately with the toast 'Pubblicato subito ✅'. Regression: test_v2_api + test_vivi_api passed 35/35, and the /vivi page, Bacheca and the manual + flow (unisciti published) work. No JS page errors. About 13 LLM calls in total.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "fetch_link / image_b64 (safe_host)", "issue": "SSRF filter only checks the hostname string with a regex. It can be bypassed: 'http://user@127.0.0.1/' passes because the userinfo becomes the host, so does hex 'http://0x7f.0.0.1/', and so does 'metadata.google.internal'. DNS names that resolve to private IPs pass, and follow_redirects=True lets a public URL redirect to an internal one. Suggested fix: parse with urllib.parse, resolve the host (socket.getaddrinfo) and reject private/loopback/link-local IPs with the ipaddress module, then re-check after each redirect (or set follow_redirects=False and handle redirects manually)."},
+      {"endpoint": "POST /api/ai/assistant", "issue": "image_url accepts any '/api/files/<path>', so a user can make Lucy read any stored object path (low risk). Also, image_b64 does not pass the mime type, so PNG/WEBP are sent without an explicit type. The JPEG test worked."},
+      {"endpoint": "assistant draft.missing", "issue": "The LLM lists optional fields as missing (e.g. 'Da completare: instagram, info_link, image_url' for a complete event). Suggested fix: filter missing on the backend to the required fields only (title, start_date for dated kinds, required section fields)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AuthContext + nav-add-button", "issue": "Race: right after page load with a valid token, tapping + before /auth/me finishes shows the guest login prompt. This happened in the first test run. Treat 'auth not ready' as loading instead of guest.", "selector": "[data-testid=nav-add-button]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AiAssistant input", "issues": ["The placeholder 'Incolla un link o descrivi l'evento…' wraps to 2 lines inside the rows=1 textarea on 390px, so the top line is clipped. Shorten it (e.g. 'Link, testo o locandina…') or use whitespace-nowrap/text-ellipsis."]},
+      {"screen": "AdminEditor AI mode", "issues": ["Once Lucy is open in the admin editor there is no 'Scegli a mano' back button (AddSheet has ai-back-button)."]},
+      {"screen": "AddSheet after using draft", "issues": ["'Cambia tipo' returns to a fresh Lucy chat (AiAssistant remounts), so the conversation and draft are lost. Consider keeping the AiAssistant state or returning to the picker."]},
+      {"screen": "Forms", "issues": ["Date/time fields use the native browser pickers (type=date/time) instead of a shadcn calendar; this existed before."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_ai_api.py", "/app/backend/tests/assets/poster.jpg", "/app/test_reports/pytest/pytest_ai.xml", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(security, medium) Harden safe_host/fetch_link/image_b64 against SSRF: resolve DNS, use an ipaddress private/loopback check, strip userinfo, re-validate redirects",
+    "(minor) Filter draft.missing on the backend to required fields only",
+    "(minor) Fix the clipped AI textarea placeholder at 390px",
+    "(minor) Avoid the guest prompt on + while auth is still loading",
+    "(optional) Add a back button in AdminEditor AI mode and keep the Lucy chat state when using 'Cambia tipo'"
+  ],
+  "critical_code_review_comments": [
+    "ai_moderate puts a post on hold (status pending) only if the status was approved. When an admin later approves an ai_held post, ai_held is not cleared. If the owner then edits the post, moderation runs again and can put it back on hold, which is acceptable but undocumented.",
+    "ai_moderate falls back to risk 'medium' when the JSON cannot be parsed. Silent failures (exceptions) return None and leave no ai_review, so the badge says 'analisi in corso' forever. Consider storing an error state.",
+    "fetch_link calls run one after another inside the request before streaming starts (up to 2 links x 8s plus the og:image fetch at 10s), so the user may wait about 20s without feedback. Send an initial SSE event first.",
+    "AI_TASKS fire-and-forget tasks are lost on restart (hot reload), so items/posts created just before a restart never get a review. An admin can re-run it manually.",
+    "server.py is now about 1970 lines; split AI into its own module (ai.py)."
+  ],
+  "updated_files": ["/app/backend/tests/test_ai_api.py", "/app/backend/tests/assets/poster.jpg", "/app/backend/tests/assets/mk.py"],
+  "success_rate": {"backend": "100% (9/9 AI + 35/35 regression)", "frontend": "100% of tested flows (minor design notes)"},
+  "test_credentials": "Super Admin admin/admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None kept. The TEST_ai* users, their posts/items/ai_chats, the admin TEST_AI item and the admin Lucy session were deleted. A pre-existing pending spotted post by 'modtest_u1', the item 'Cc' and one ai_chat from another user were left untouched (not created by this test).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app && REACT_APP_BACKEND_URL=https://dove-potenza.preview.emergentagent.com python -m pytest backend/tests/test_ai_api.py -n 0 -s (about 50s, about 10 LLM calls; it cleans up its own user, posts, items and ai_chats via direct Mongo plus the admin delete-user API). pytest.ini adds -n by default, so pass -n 0. The poster asset is backend/tests/assets/poster.jpg (regenerate with mk.py). The frontend login trick is localStorage cfp_token, then goto and wait about 3s before tapping + (auth race). Post form testids: post-field-{key}, post-tag-{tag}; item form: field-title, field-start-date, field-start-time; the image preview is image-preview."
+}
