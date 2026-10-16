@@ -9,6 +9,7 @@ import { FeaturedCarousel } from "@/components/explore/FeaturedCarousel";
 import { TrendingList } from "@/components/explore/TrendingList";
 import { PollCard } from "@/components/explore/PollCard";
 import { AlertBar, BoardShortcuts } from "@/components/explore/HomeBlocks";
+import { ViviShortcuts } from "@/components/vivi/ThemeTile";
 import { BannerSlot, BannerCard, useBanners } from "@/components/Banner";
 import { ItemDetailSheet } from "@/components/ItemDetailSheet";
 
@@ -65,6 +66,7 @@ export default function Explore() {
       case "banner": return <BannerSlot key={b.id} position="home_top" className="mx-5 mt-7" />;
       case "featured": return <FeaturedCarousel key={b.id} title={b.label} items={home.data?.featured} onOpen={open} />;
       case "trending": return <TrendingList key={b.id} title={b.label} items={home.data?.trending} onOpen={open} />;
+      case "vivi": return <ViviShortcuts key={b.id} title={b.label} themes={cfg.themes} />;
       case "board": return <BoardShortcuts key={b.id} title={b.label} sections={cfg.sections} />;
       case "list":
         return (

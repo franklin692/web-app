@@ -24,7 +24,7 @@ export const AdminEditor = ({ target, onClose }) => {
       const d = target.data;
       const o = target.entity === "item" ? options.find((x) => x.id === `cat:${d.kind}`) || { type: "item", slug: d.kind, title: d.kind } : options.find((x) => x.id === `sec:${d.section}`);
       setOpt(o || null);
-      setForm(target.entity === "item" ? Object.fromEntries(Object.keys(EMPTY_ITEM).map((k) => [k, d[k] ?? ""])) : { data: { ...d.data }, tag: d.tag });
+      setForm(target.entity === "item" ? Object.fromEntries(Object.keys(EMPTY_ITEM).map((k) => [k, d[k] ?? EMPTY_ITEM[k]])) : { data: { ...d.data }, tag: d.tag });
     } else setOpt(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target]);

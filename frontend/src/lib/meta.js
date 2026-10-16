@@ -51,7 +51,7 @@ export const STATUS = {
 };
 export const LISTING_STATUS = { ...STATUS, completato: { label: "Completato", cls: "bg-sky-500/15 text-sky-300 border-sky-400/30" }, scaduto: { label: "Scaduto", cls: "bg-zinc-500/15 text-zinc-400 border-zinc-400/30" } };
 
-export const EMPTY_ITEM = { title: "", category: "", town: "Potenza", zone: "", description: "", image_url: "", instagram: "", info_link: "", address: "", opening_hours: "", start_date: "", start_time: "", end_time: "", price: "" };
+export const EMPTY_ITEM = { title: "", category: "", town: "Potenza", zone: "", description: "", image_url: "", instagram: "", info_link: "", address: "", opening_hours: "", start_date: "", start_time: "", end_time: "", price: "", themes: [] };
 export const EMPTY_SPOTTED = { where: "", when: "", who: "", message: "", tag: "altro" };
 
 export const whenLabel = (it) => {

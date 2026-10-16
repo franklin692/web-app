@@ -56,7 +56,7 @@ const EditListing = ({ l, onClose }) => {
   const opt = l && (l.type === "item" ? { type: "item", slug: l.kind } : { type: "post", slug: l.kind, section: secs[l.kind] });
   useEffect(() => {
     if (!l) return;
-    setForm(l.type === "item" ? Object.fromEntries(Object.keys(EMPTY_ITEM).map((k) => [k, l.item[k] ?? ""])) : { data: { ...l.post.data }, tag: l.post.tag });
+    setForm(l.type === "item" ? Object.fromEntries(Object.keys(EMPTY_ITEM).map((k) => [k, l.item[k] ?? EMPTY_ITEM[k]])) : { data: { ...l.post.data }, tag: l.post.tag });
   }, [l]);
   const save = async () => {
     const err = validateEntry(opt, form, cats);

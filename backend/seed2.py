@@ -9,7 +9,7 @@ TOWNS = [("Potenza", "Potenza"), ("Abriola", "Potenza e dintorni"), ("Avigliano"
          ("Sasso di Castalda", "Melandro"), ("Castelmezzano", "Dolomiti Lucane"), ("Pietrapertosa", "Dolomiti Lucane")]
 
 BLOCKS = [("alert", "Avviso"), ("poll", "Sondaggio del Giorno"), ("banner", "Banner sponsor"), ("featured", "In Evidenza stasera"),
-          ("trending", "Dove va Potenza stasera"), ("board", "Dalla Bacheca"), ("list", "Tutto a Potenza")]
+          ("trending", "Dove va Potenza stasera"), ("vivi", "Vivi Potenza"), ("board", "Dalla Bacheca"), ("list", "Tutto a Potenza")]
 
 DEFAULT_CONFIG = {
     "_id": "app", "app_name": "Cosa Fare a Potenza", "logo_url": "",
@@ -111,3 +111,33 @@ def seed_poll(today: date):
     return {"question": "Venerdì sera: dove si va?", "options": [{"text": "Centro Storico", "votes": 18}, {"text": "Macchia Romana", "votes": 23},
                                                                  {"text": "Gallitello", "votes": 6}],
             "image_url": "", "comment": "Potenza ha deciso: si va a Macchia Romana! 🔥", "start_date": today.isoformat(), "status": "open"}
+
+
+def T(slug, name, icon, color, description, order, subcategories):
+    return dict(slug=slug, name=name, icon=icon, color=color, description=description, order=order, hidden=False,
+                image_url="", subcategories=subcategories)
+
+
+DEFAULT_THEMES = [
+    T("movida", "Movida e serate", "PartyPopper", "#EC4899", "DJ set, discoteche, aperitivi e notti in città", 0,
+      ["DJ Set / Discoteca", "Aperitivo / DJ Set", "Discoteca", "Cocktail Bar", "Festa privata"]),
+    T("musica-spettacoli", "Concerti, musica e spettacoli", "Music", "#8B5CF6", "Live, teatro, cinema e spettacoli dal vivo", 1,
+      ["Concerto", "Teatro", "Cinema"]),
+    T("corsi", "Corsi, workshop e formazione", "GraduationCap", "#0EA5E9", "Impara qualcosa di nuovo: musica, lingue, laboratori", 2,
+      ["Musica", "Workshop", "Corso"]),
+    T("cultura", "Cultura, musei e mostre", "Landmark", "#EAB308", "Mostre, musei, storia e patrimonio lucano", 3,
+      ["Mostra", "Museo", "Associazione culturale"]),
+    T("sport", "Sport e benessere", "Dumbbell", "#10B981", "Tornei, palestre, padel, yoga e attività fisica", 4, ["Sport"]),
+    T("natura", "Natura, escursioni e outdoor", "Mountain", "#22C55E", "Sentieri, parchi, belvederi e aria aperta", 5,
+      ["Escursioni", "Parco", "Belvedere"]),
+    T("sagre", "Sagre, feste e tradizioni", "Flame", "#F97316", "Sapori tipici, feste di paese e tradizioni", 6, ["Sagra"]),
+    T("locali", "Locali, ristoranti e ritrovi", "Utensils", "#F43F5E", "Pub, pizzerie, bar e i posti dove ci si incontra", 7,
+      ["Pub", "Bar", "Ristorante", "Pizzeria", "Passeggio / Centro", "Piazza", "Università"]),
+    T("shopping", "Shopping, mercatini e fiere", "ShoppingBag", "#A855F7", "Centri commerciali, mercatini ed eventi commerciali", 8,
+      ["Centro commerciale", "Mercatino", "Sala giochi"]),
+    T("arte", "Arte, creatività e hobby", "Palette", "#06B6D4", "Laboratori creativi, fotografia, hobby e passioni", 9,
+      ["Arte", "Laboratorio creativo"]),
+    T("famiglie", "Famiglie e bambini", "Baby", "#FB7185", "Idee e attività da vivere con i più piccoli", 10, ["Bambini", "Famiglie"]),
+    T("community", "Community e volontariato", "HeartHandshake", "#14B8A6", "Associazioni, volontariato e gruppi della città", 11,
+      ["Volontariato", "Associazione culturale"]),
+]

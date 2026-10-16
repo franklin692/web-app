@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Compass, Radar, Plus, LayoutGrid, LogIn, UserRound } from "lucide-react";
+import { Compass, Sparkles, Plus, LayoutGrid, LogIn, UserRound } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -32,7 +32,7 @@ export const BottomNav = ({ onPlus }) => {
     <nav data-testid="bottom-nav" className="fixed bottom-0 left-1/2 z-40 w-full max-w-md -translate-x-1/2 border-t border-white/10 bg-[#0F0F16]/90 px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 backdrop-blur-xl">
       <div className="flex items-end justify-around">
         <Tab to="/" icon={Compass} label="Esplora" testId="nav-explore" />
-        <Tab to="/mappa" icon={Radar} label="Radar" testId="nav-map" />
+        <Tab to="/vivi" icon={Sparkles} label="Vivi" testId="nav-vivi" />
         <button
           data-testid="nav-add-button"
           onClick={onPlus}

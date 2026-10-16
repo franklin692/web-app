@@ -45,6 +45,7 @@ export const ItemDetailSheet = ({ id, onClose }) => {
     qc.setQueryData(["item", id], data);
     qc.invalidateQueries({ queryKey: ["items"] });
     qc.invalidateQueries({ queryKey: ["home"] });
+    qc.invalidateQueries({ queryKey: ["vivi"] });
     qc.invalidateQueries({ queryKey: ["saved"] });
   };
   const vote = useMutation({ mutationFn: async (type) => (await api.post(`/items/${id}/vote`, { type })).data, onSuccess: refresh, onError: (e) => toast.error(errMsg(e)) });

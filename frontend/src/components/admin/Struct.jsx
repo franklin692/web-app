@@ -37,6 +37,19 @@ const FieldsEditor = ({ fields, onChange }) => {
 const StructForm = ({ coll, d, onChange }) => {
   const set = (k) => (v) => onChange({ ...d, [k]: v?.target ? v.target.value : v });
   const isSec = coll === "sections";
+  if (coll === "themes")
+    return (
+      <div className="mt-3 flex flex-col gap-3 border-t border-white/10 pt-3">
+        <Inp testId="struct-name-input" value={d.name} onChange={set("name")} placeholder="Nome" />
+        <Inp testId="struct-desc-input" value={d.description} onChange={set("description")} placeholder="Breve descrizione" />
+        <ColorInput testId="struct-color-input" value={d.color} onChange={set("color")} />
+        <H>Icona</H><IconPicker testId="struct-icon-picker" value={d.icon} onChange={set("icon")} />
+        <ImageInput value={d.image_url} onChange={set("image_url")} label="Immagine di copertina (facoltativa)" />
+        <H>Collega automaticamente le sottocategorie</H>
+        <p className="-mt-1 text-[11px] text-zinc-500">Ogni contenuto di Esplora con una di queste sottocategorie compare qui. Si possono anche taggare i contenuti a mano dal modulo.</p>
+        <ChipsInput testId="struct-subcats-input" value={d.subcategories} onChange={set("subcategories")} placeholder="Es. Concerto, Sagra, Parco" />
+      </div>
+    );
   return (
     <div className="mt-3 flex flex-col gap-3 border-t border-white/10 pt-3">
       <Inp testId="struct-name-input" value={d.name} onChange={set("name")} placeholder="Nome" />
@@ -78,7 +91,7 @@ const Row = ({ coll, d, i, list, all }) => {
   const reorder = (dir) => act(() => adminApi.post(`${url}/reorder`, { ids: move(list, i, dir).map((x) => x.id) }));
   const del = () => {
     let move_to = "";
-    if (d.count) {
+    if (d.count && coll !== "themes") {
       move_to = window.prompt(`Contiene ${d.count} contenuti. Scrivi lo slug di destinazione: ${all.filter((x) => x.slug !== d.slug).map((x) => x.slug).join(", ")}`);
       if (!move_to) return;
     } else if (!window.confirm(`Eliminare "${d.name}"?`)) return;
@@ -116,7 +129,7 @@ export const StructAdmin = ({ coll }) => {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex gap-2">
-        <Inp testId={`struct-new-name-${coll}`} value={name} onChange={(e) => setName(e.target.value)} placeholder={coll === "sections" ? "Nuova sezione (es. Feste Universitarie)" : "Nuova categoria (es. Sagre in Provincia)"} />
+        <Inp testId={`struct-new-name-${coll}`} value={name} onChange={(e) => setName(e.target.value)} placeholder={{ sections: "Nuova sezione (es. Feste Universitarie)", themes: "Nuova categoria Vivi Potenza", categories: "Nuova categoria (es. Sagre in Provincia)" }[coll]} />
         <button data-testid={`struct-create-${coll}`} onClick={() => name.trim() && act(() => adminApi.post(`/admin/struct/${coll}`, { name }), "Creato").then(() => setName(""))} className="shrink-0 rounded-xl bg-gradient-to-r from-violet-600 to-pink-600 px-4"><Plus className="h-5 w-5" /></button>
       </div>
       {data?.map((d, i) => <Row key={`${d.id}-${d.order}-${d.hidden}`} coll={coll} d={d} i={i} list={data} all={data} />)}

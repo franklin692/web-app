@@ -26,7 +26,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from seed import build_seed
-from seed2 import DEFAULT_CONFIG, DEFAULT_CATEGORIES, DEFAULT_SECTIONS, SPOT_TAG_MAP, seed_posts, seed_poll
+from seed2 import DEFAULT_THEMES, DEFAULT_CONFIG, DEFAULT_CATEGORIES, DEFAULT_SECTIONS, SPOT_TAG_MAP, seed_posts, seed_poll
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("cosafare")
@@ -90,6 +90,7 @@ class Item(BaseDocument):
     reject_reason: str = ""
     featured: bool = False
     boost: int = 0
+    themes: list = Field(default_factory=list)
     created_by: Optional[str] = None
     created_at: str = Field(default_factory=iso_now)
 
@@ -135,6 +136,7 @@ class ItemIn(BaseModel):
     start_time: str = S(5)
     end_time: str = S(5)
     price: str = S(120)
+    themes: list[str] = Field(default_factory=list, max_length=12)
 
 
 class SpottedIn(BaseModel):
@@ -597,7 +599,14 @@ def slugify(name: str) -> str:
 
 async def get_config():
     stored = await db.config.find_one({"_id": "app"}) or {}
-    return {**copy.deepcopy(DEFAULT_CONFIG), **stored}
+    c = {**copy.deepcopy(DEFAULT_CONFIG), **stored}
+    blocks = c["home"].get("blocks", [])
+    ids = {b["id"] for b in blocks}
+    for i, b in enumerate(DEFAULT_CONFIG["home"]["blocks"]):
+        if b["id"] not in ids:
+            blocks.insert(min(i, len(blocks)), dict(b))
+    c["home"]["blocks"] = blocks
+    return c
 
 
 async def get_settings():
@@ -639,7 +648,46 @@ async def public_config():
         secs.append(o)
     return {"app_name": c["app_name"], "logo_url": c["logo_url"], "texts": c["texts"], "trend": c["trend"], "home": resolve_home(c["home"]),
             "zones": [z["name"] for z in c["zones"] if not z.get("hidden")], "towns": [t for t in c["towns"] if not t.get("hidden")],
-            "categories": cats, "sections": secs}
+            "categories": cats, "sections": secs, "themes": await themes_with_counts()}
+
+
+def in_theme(t, it):
+    return t["slug"] in (it.get("themes") or []) or it.get("category") in (t.get("subcategories") or [])
+
+
+async def themes_with_counts(include_hidden=False):
+    items = [i.model_dump() for i in await load_public_items()]
+    q = {} if include_hidden else {"hidden": {"$ne": True}}
+    out = []
+    async for t in db.themes.find(q).sort("order", 1):
+        o = doc_out(t)
+        o["count"] = sum(1 for it in items if in_theme(t, it))
+        o["upcoming"] = sum(1 for it in items if in_theme(t, it) and it["kind"] in DATED)
+        out.append(o)
+    return out
+
+
+@api.get("/vivi/{slug}")
+async def vivi_theme(slug: str, request: Request, when: str = "all", kind: str = "", town: str = "", sort: str = "smart"):
+    t = await db.themes.find_one({"slug": slug, "hidden": {"$ne": True}})
+    if not t:
+        raise HTTPException(404, "Categoria non trovata")
+    pres = [p for p in await present(await load_public_items(), await get_identity(request)) if in_theme(t, p)]
+    facets = {"kinds": sorted({p["kind"] for p in pres}), "towns": sorted({p["town"] for p in pres if p.get("town")})}
+    if kind:
+        pres = [p for p in pres if p["kind"] == kind]
+    if town:
+        pres = [p for p in pres if p.get("town") == town]
+    if when == "tonight":
+        pres = [p for p in pres if p["kind"] in DATED and p["_tonight"]]
+    elif when == "weekend":
+        pres = [p for p in pres if p["kind"] in DATED and p["_weekend"]]
+    elif when == "permanent":
+        pres = [p for p in pres if p["kind"] not in DATED]
+    keys = {"az": lambda p: p["title"].lower(), "trend": lambda p: (-p["_score"], p["title"].lower()),
+            "smart": lambda p: (p["kind"] not in DATED, not p.get("live", False), p.get("start_iso") or "", -p["_score"])}
+    pres.sort(key=keys.get(sort, keys["smart"]))
+    return {"theme": doc_out(t), "facets": facets, "items": [clean(p) for p in pres]}
 
 
 async def audit(a, action, target=""):
@@ -676,7 +724,8 @@ async def admin_put_config(body: dict, a=Depends(require_super)):
     return await admin_get_config(a)
 
 
-STRUCT = {"categories": ("items", "kind", {"name", "plural", "icon", "color", "subcategories", "dated", "hidden"}),
+STRUCT = {"themes": ("items", "themes", {"name", "description", "icon", "color", "image_url", "subcategories", "hidden"}),
+          "categories": ("items", "kind", {"name", "plural", "icon", "color", "subcategories", "dated", "hidden"}),
           "sections": ("posts", "section", {"name", "icon", "color", "description", "hidden", "fields", "tags", "reply_label", "requires_approval",
                                             "duration_days", "reactions", "partner_name", "partner_logo", "expiry_field"})}
 
@@ -690,6 +739,8 @@ def struct_meta(coll):
 @api.get("/admin/struct/{coll}")
 async def struct_list(coll: str, a=Depends(require_admin)):
     content, field, _ = struct_meta(coll)
+    if coll == "themes":
+        return await themes_with_counts(include_hidden=True)
     out = []
     async for d in db[coll].find().sort("order", 1):
         o = doc_out(d)
@@ -707,7 +758,7 @@ async def struct_create(coll: str, body: dict, a=Depends(require_super)):
     base = slugify(data["name"]); slug = base; i = 2
     while await db[coll].find_one({"slug": slug}):
         slug = f"{base}-{i}"; i += 1
-    defaults = ({"plural": data["name"], "icon": "Sparkles", "color": "#8B5CF6", "subcategories": [], "dated": False, "hidden": False}
+    defaults = {"icon": "Sparkles", "color": "#8B5CF6", "description": "", "image_url": "", "subcategories": [], "hidden": False} if coll == "themes" else ({"plural": data["name"], "icon": "Sparkles", "color": "#8B5CF6", "subcategories": [], "dated": False, "hidden": False}
                 if coll == "categories" else
                 {"icon": "Sparkles", "color": "#8B5CF6", "description": "", "hidden": False, "fields": [{"key": "title", "label": "Titolo", "type": "text", "required": True, "options": []},
                  {"key": "description", "label": "Descrizione", "type": "textarea", "required": False, "options": []}], "tags": [], "reply_label": "Rispondi",
@@ -742,7 +793,11 @@ async def struct_delete(coll: str, sid: str, move_to: str = "", a=Depends(requir
     d = await db[coll].find_one({"_id": oid(sid)})
     if not d:
         raise HTTPException(404, "Non trovato")
-    n = await db[content].count_documents({field: d["slug"]})
+    if coll == "themes":
+        await db.items.update_many({}, {"$pull": {"themes": d["slug"]}})
+        n = 0
+    else:
+        n = await db[content].count_documents({field: d["slug"]})
     if n and not move_to:
         raise HTTPException(409, f"Contiene {n} contenuti: spostali prima in un'altra voce")
     if n:
@@ -1506,7 +1561,7 @@ async def admin_audit(a=Depends(require_super)):
     return [doc_out(d) for d in await db.audit.find().sort("at", -1).to_list(300)]
 
 
-BACKUP_COLLS = ["items", "posts", "categories", "sections", "polls", "banners", "config", "users", "post_replies", "reports"]
+BACKUP_COLLS = ["themes", "items", "posts", "categories", "sections", "polls", "banners", "config", "users", "post_replies", "reports"]
 
 
 @api.get("/admin/backup")
@@ -1607,6 +1662,8 @@ async def seed_all():
         await db.categories.insert_many(copy.deepcopy(DEFAULT_CATEGORIES))
     if await db.sections.count_documents({}) == 0:
         await db.sections.insert_many(copy.deepcopy(DEFAULT_SECTIONS))
+    if await db.themes.count_documents({}) == 0:
+        await db.themes.insert_many(copy.deepcopy(DEFAULT_THEMES))
     await migrate_spotted()
     if await db.posts.count_documents({"section": {"$ne": "spotted"}}) == 0:
         secs = {x["slug"]: x async for x in db.sections.find()}

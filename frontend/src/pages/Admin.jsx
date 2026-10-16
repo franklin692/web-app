@@ -15,7 +15,7 @@ import { AdminEditor } from "@/components/admin/AdminEditor";
 const TABS = [
   ["queue", "Coda", false], ["reports", "Segnalazioni", false], ["manage", "Esplora", false], ["posts", "Bacheca", false],
   ["polls", "Sondaggi", false], ["replies", "Risposte", false], ["stats", "Statistiche", false],
-  ["cats", "Categorie", true], ["sections", "Sezioni Bacheca", true], ["zones", "Zone & Paesi", true], ["home", "Home", true],
+  ["vivi", "Vivi Potenza", true], ["cats", "Categorie", true], ["sections", "Sezioni Bacheca", true], ["zones", "Zone & Paesi", true], ["home", "Home", true],
   ["banners", "Banner & Sponsor", true], ["texts", "Testi & Regole", true], ["users", "Utenti", true], ["audit", "Registro", true], ["backup", "Backup", true],
 ];
 
@@ -31,7 +31,7 @@ export default function Admin() {
   const tabs = TABS.filter((t) => !t[2] || isSuper);
   const C = {
     queue: <AdminQueue onEdit={setEditing} />, reports: <AdminReports />, manage: <AdminManage onEdit={setEditing} />, posts: <AdminPosts onEdit={setEditing} />,
-    polls: <AdminPolls />, replies: <AdminReplies />, stats: <AdminStats />, cats: <StructAdmin coll="categories" />, sections: <StructAdmin coll="sections" />,
+    polls: <AdminPolls />, replies: <AdminReplies />, stats: <AdminStats />, vivi: <StructAdmin coll="themes" />, cats: <StructAdmin coll="categories" />, sections: <StructAdmin coll="sections" />,
     zones: <ZonesTowns />, home: <HomeBuilder />, banners: <AdminBanners />, texts: <TextsRules />, users: <AdminUsers />, audit: <AdminAudit />, backup: <AdminBackup />,
   };
   return (

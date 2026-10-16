@@ -48,6 +48,19 @@ export const ItemFields = ({ kind, value, onChange }) => {
           <input data-testid="field-price" className={inputCls} value={value.price} onChange={set("price")} placeholder="Es. Ingresso libero" />
         </Field>
       )}
+      {cfg?.themes?.length > 0 && (
+        <Field label="Vivi Potenza (dove farlo trovare)" hint="Facoltativo: scegli una o più categorie tematiche">
+          <div className="flex flex-wrap gap-2">
+            {cfg.themes.map((t) => {
+              const on = (value.themes || []).includes(t.slug);
+              return (
+                <button type="button" key={t.slug} data-testid={`field-theme-${t.slug}`} onClick={() => onChange({ themes: on ? value.themes.filter((x) => x !== t.slug) : [...(value.themes || []), t.slug] })}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${on ? "border-violet-400 bg-violet-500/20 text-white" : "border-white/10 bg-white/5 text-zinc-400"}`}>{t.name}</button>
+              );
+            })}
+          </div>
+        </Field>
+      )}
       <Field label="Descrizione">
         <textarea data-testid="field-description" rows={4} className={inputCls} value={value.description} onChange={set("description")} placeholder="Racconta cosa si fa, l'atmosfera, chi c'è…" />
       </Field>
