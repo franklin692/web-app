@@ -13,7 +13,7 @@ export const KindPicker = ({ onPick }) => (
   <div className="grid grid-cols-2 gap-3">
     {ADD_OPTIONS.map((o, i) => (
       <button key={o.kind} data-testid={`add-kind-${o.kind}`} onClick={() => onPick(o.kind)} style={{ animationDelay: `${i * 60}ms` }}
-        className={`fade-up flex flex-col items-start gap-3 rounded-3xl border border-white/10 bg-[#16161F] p-4 text-left transition-all hover:border-violet-500/40 active:scale-95 ${i === 4 ? "col-span-2 flex-row items-center" : ""}`}>
+        className={`fade-up flex items-start gap-3 rounded-3xl border border-white/10 bg-[#16161F] p-4 text-left transition-all hover:border-violet-500/40 active:scale-95 ${i === 4 ? "col-span-2 flex-row items-center" : "flex-col"}`}>
         <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${o.grad} shadow-lg`}><o.icon className="h-6 w-6 text-white" /></span>
         <span><span className="block font-display text-base font-bold text-white">{o.title}</span><span className="text-xs text-zinc-400">{o.sub}</span></span>
       </button>

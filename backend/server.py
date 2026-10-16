@@ -17,6 +17,7 @@ import bcrypt
 import jwt
 import requests
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, UploadFile, File, Response
 from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -238,6 +239,18 @@ async def get_identity(request: Request):
     return {"user": None, "voter": f"d:{dev}" if dev else None}
 
 
+def client_ip(request: Request) -> str:
+    xff = request.headers.get("X-Forwarded-For", "")
+    return xff.split(",")[0].strip() if xff else (request.client.host if request.client else "")
+
+
+def safe_url(v: str) -> str:
+    v = (v or "").strip()
+    if not v or v.startswith("/api/files/") or re.match(r"^https?://", v, re.I):
+        return v
+    return "https://" + v.lstrip("/")
+
+
 def need_voter(ident):
     if not ident["voter"]:
         raise HTTPException(400, "Dispositivo non riconosciuto")
@@ -334,6 +347,8 @@ def level(score: int) -> int:
 def validate_item(data: dict):
     if data["kind"] not in KINDS:
         raise HTTPException(422, "Tipo non valido")
+    for f in ("instagram", "info_link", "image_url"):
+        data[f] = safe_url(data.get(f, ""))
     if data["kind"] == "event":
         try:
             date.fromisoformat(data.get("start_date") or "")
@@ -619,8 +634,12 @@ async def react(sid: str, body: ReactIn, request: Request):
     res = await db.spotted_reactions.delete_one({"spotted_id": s.id, "voter": voter, "type": body.type})
     inc = -1 if res.deleted_count else 1
     if inc == 1:
-        await db.spotted_reactions.insert_one({"spotted_id": s.id, "voter": voter, "type": body.type})
-    await db.spotted.update_one({"_id": ObjectId(s.id)}, {"$inc": {f"reactions.{body.type}": inc}})
+        try:
+            await db.spotted_reactions.insert_one({"spotted_id": s.id, "voter": voter, "type": body.type})
+        except DuplicateKeyError:
+            inc = 0
+    if inc:
+        await db.spotted.update_one({"_id": ObjectId(s.id)}, {"$inc": {f"reactions.{body.type}": inc}})
     s = Spotted.from_mongo(await db.spotted.find_one({"_id": ObjectId(s.id)}))
     mine = await my_reactions(voter, [s.id])
     return spotted_public(s, mine.get(s.id))
@@ -645,10 +664,13 @@ async def replies_for(sid: str):
 
 
 @api.post("/spotted-code")
-async def spotted_by_code(body: CodeIn):
+async def spotted_by_code(body: CodeIn, request: Request):
+    key = f"code:{client_ip(request)}"
+    await check_lock(key)
     code = body.code.strip().upper()
     s = Spotted.from_mongo(await db.spotted.find_one({"owner_code": code})) if code else None
     if not s:
+        await register_fail(key)
         raise HTTPException(404, "Codice non valido")
     return {"spotted": spotted_public(s), "replies": await replies_for(s.id)}
 
@@ -679,7 +701,7 @@ async def register(body: RegisterIn):
 @api.post("/auth/login")
 async def login(body: LoginIn, request: Request):
     ident = body.identifier.strip().lower()
-    key = f"{request.client.host if request.client else ''}:{ident}"
+    key = f"{client_ip(request)}:{ident}"
     await check_lock(key)
     u = User.from_mongo(await db.users.find_one({"$or": [{"email": ident}, {"username_lower": ident}]}))
     if not u or not check_pw(body.password, u.password_hash):
@@ -731,7 +753,7 @@ async def my_submissions(user: User = Depends(require_user)):
 # ---------- admin ----------
 @api.post("/admin/pin")
 async def admin_pin(body: PinIn, request: Request):
-    key = f"pin:{request.client.host if request.client else ''}"
+    key = f"pin:{client_ip(request)}"
     await check_lock(key)
     st = await get_settings()
     if not check_pw(body.pin, st.get("admin_pin_hash", "")):

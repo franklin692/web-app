@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 1: full backend (22 pytest cases) + mobile (390x844) frontend E2E testing of Cosa Fare a Potenza. 21/22 backend tests passed. The one failure is the login brute-force lockout, which never triggers because ingress proxy IPs change between requests. Everything else in the review request works: home/items filters, voting switch/cancel with no double counting, save, submissions (pending + SPOT code), spotted reactions/reply/code, register/login/me, the admin PIN and admin account, queue approve/edit-approve/reject, direct insert, feature, boost/reset, threshold changing display_count, PIN change invalidating old tokens, and the replies list. Every frontend flow tested passed. One layout overlap and a few UX issues were found.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/auth/login (and POST /api/admin/pin)", "issue": "Brute-force lockout does not work behind the ingress. The lock key is f'{request.client.host}:{identifier}', and request.client.host is the ingress/proxy pod IP, which changes between requests (observed 10.208.133.66 and 10.208.133.69). Failed attempts are split across keys, so 6+ bad logins all return 401 and never 429. For the PIN, all users behind one proxy IP share a single lock bucket.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/spotted-code", "issue": "No rate limit on code guessing (6 hex chars = about 16.7M combinations). Consider reusing check_lock/register_fail."},
+      {"endpoint": "POST /api/submissions/item", "issue": "instagram/info_link are not validated as http(s) URLs. Frontend renders them as <a href>, so a javascript: URL would run if an admin approves it."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AddSheet header (any type selected)", "issue": "The subtitle 'Verrà pubblicato dopo l'approvazione degli Admin' overlaps the 'Cambia tipo' back link (they render on top of each other).", "selector": "[data-testid='add-back-button']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Add event form / Admin editor", "issues": ["Uses the browser's native <input type=date/time> pickers. In this English-locale test browser they showed US format (10/16/2026, 10:00 PM) in an Italian UI; consider the shadcn Calendar or a forced it-IT format."]},
+      {"screen": "Item detail", "issues": ["Location row duplicates the text when address == zone (e.g. 'Rione Santa Maria · Rione Santa Maria · Potenza'). Dedupe the joined values."]},
+      {"screen": "Explore trending", "issues": ["The frontend shows 6 trending rows while /api/home returns 10 (probably an intentional slice; just confirming)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_cosafare_api.py", "/app/backend/tests/cleanup_test_data.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix the brute-force key: use the client IP from the X-Forwarded-For first hop (fallback request.client.host), or key login lockout by identifier only. The same applies to the /admin/pin lock. Re-run TestAuth::test_brute_force.",
+    "Fix the AddSheet subtitle/back-link overlap.",
+    "Optional: validate instagram/info_link as http(s) URLs; rate-limit /api/spotted-code; dedupe the address/zone row; consider a localized date picker."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 963 lines; split into routers (public, spotted, auth, admin, storage) per the >700-line guideline.",
+    "CORS allow_origins defaults to '*' with allow_credentials=True. This works since auth uses Bearer tokens, but explicit origins are recommended.",
+    "Guest saves/votes (device id) are not merged into the account after register/login, so items a user saved as a guest disappear from Salvati after login.",
+    "seed_admin correctly re-hashes the admin password when it changes; bcrypt hashes start with $2b$. No httpOnly cookies are used (Bearer in localStorage), which is by design per the request.",
+    "react(): toggle uses delete then insert plus $inc. Concurrent double-taps can raise a DuplicateKeyError (500) on the unique index; wrap the insert in try/except."
+  ],
+  "updated_files": ["/app/backend/tests/test_cosafare_api.py", "/app/backend/tests/cleanup_test_data.py"],
+  "success_rate": {"backend": "95% (21/22)", "frontend": "100% of flows tested (1 layout bug)"},
+  "test_credentials": "admin/admin123 (also admin@cosafarepotenza.it), PIN admin123 from /app/memory/test_credentials.md: all valid.",
+  "seed_data_creation": "None persisted. All TEST_ items/spotted and test_/testui_ users were removed after testing. DB back to seed counts (17 items, 2 pending; 5 spotted, 1 pending). Threshold restored to 20 and PIN restored to admin123.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/test_cosafare_api.py` then `python /app/backend/tests/cleanup_test_data.py` (from the tests dir). test_pin_change_invalidates temporarily changes the PIN to tmp9999 and restores it. Server date is 2026-10-16 (Fri). Frontend testids: item-card-*, vote-going-button/vote-here-button, save-item-button, nav-add-button, add-kind-*, spotted-react-{type}-{id}, unlock-admin-toggle/admin-pin-input, approve-{id}, edit-pending-{id}, boost-{n}-{id}, feature-toggle-{id}, settings-threshold-input.",
+  "rca of the issue": "Brute force: the login_attempts collection showed two records for the same identifier with different IP prefixes ('10.208.133.66:nouser_x' count 3 and '10.208.133.69:nouser_x' count 3), so neither reached 5. Reproduce by POSTing /api/auth/login 6 times with a bad password: all return 401. Mitigation: derive the IP from X-Forwarded-For, or key by identifier."
+}

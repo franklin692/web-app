@@ -77,7 +77,7 @@ export const ItemDetailSheet = ({ id, onClose }) => {
           </div>
           <div className="flex flex-col gap-3 rounded-2xl border border-white/[0.08] bg-[#16161F] p-4">
             {whenLabel(it) && <Row icon={CalendarDays}>{whenLabel(it)}{it.end_time ? ` → ${it.end_time}` : ""}</Row>}
-            <Row icon={MapPin}>{[it.address, it.zone, it.town].filter(Boolean).join(" · ")}</Row>
+            <Row icon={MapPin}>{[...new Set([it.address, it.zone, it.town].filter(Boolean))].join(" · ")}</Row>
             {it.opening_hours && <Row icon={Clock}>{it.opening_hours}</Row>}
             {it.price && <Row icon={Ticket}>{it.price}</Row>}
           </div>
