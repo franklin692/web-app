@@ -1,8 +1,7 @@
 import { LogOut } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { AuthForms } from "@/components/profile/AuthForms";
-import { AdminAccess } from "@/components/profile/AdminAccess";
-import { ProfileSections } from "@/components/profile/ProfileSections";
+import { ProfileTabs, AdminLink } from "@/components/profile/ProfileTabs";
 
 export default function Profile() {
   const { user, logout, ready } = useAuth();
@@ -25,11 +24,11 @@ export default function Profile() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-violet-300">Il tuo radar</p>
           <h1 className="mt-1 font-display text-4xl font-black tracking-tight">Entra in <span className="text-gradient">città</span></h1>
-          <p className="mt-2 text-sm text-zinc-400">Puoi votare e segnalare anche senza account. Accedi per ritrovare salvati, Spotted e segnalazioni.</p>
+          <p className="mt-2 text-sm text-zinc-400">Puoi votare anche senza account. Accedi per pubblicare, rispondere agli annunci e ricevere messaggi.</p>
         </div>
       )}
-      {user ? <ProfileSections /> : <AuthForms />}
-      <AdminAccess />
+      <AdminLink />
+      {user ? <ProfileTabs /> : <AuthForms />}
     </div>
   );
 }

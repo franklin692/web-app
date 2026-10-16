@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import os
 import re
+import copy
 import uuid
 import secrets
 import logging
@@ -16,7 +17,7 @@ from zoneinfo import ZoneInfo
 import bcrypt
 import jwt
 import requests
-from bson import ObjectId
+from bson import ObjectId, json_util
 from pymongo.errors import DuplicateKeyError
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, UploadFile, File, Response
 from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
@@ -25,6 +26,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from seed import build_seed
+from seed2 import DEFAULT_CONFIG, DEFAULT_CATEGORIES, DEFAULT_SECTIONS, SPOT_TAG_MAP, seed_posts, seed_poll
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("cosafare")
@@ -37,6 +39,8 @@ api = APIRouter(prefix="/api")
 
 ROME = ZoneInfo("Europe/Rome")
 KINDS = {"event", "venue", "place", "activity"}
+DATED = {"event"}
+HIDDEN_CATS = set()
 SPOT_TAGS = {"unibas", "mcdonalds", "centro", "trasporti", "locali", "altro"}
 REACTIONS = {"heart", "eyes", "fire"}
 JWT_ALG = "HS256"
@@ -83,6 +87,7 @@ class Item(BaseDocument):
     end_time: str = ""
     price: str = ""
     status: str = "pending"
+    reject_reason: str = ""
     featured: bool = False
     boost: int = 0
     created_by: Optional[str] = None
@@ -107,6 +112,7 @@ class User(BaseDocument):
     email: str
     password_hash: str
     role: str = "user"
+    blocked: bool = False
     created_at: str = Field(default_factory=iso_now)
 
 
@@ -173,6 +179,7 @@ class PinIn(BaseModel):
 
 class StatusIn(BaseModel):
     status: str
+    reason: str = ""
 
 
 class BoostIn(BaseModel):
@@ -219,11 +226,7 @@ def decode_bearer(request: Request):
 
 
 def user_out(u: User):
-    return {"id": u.id, "username": u.username, "email": u.email, "role": u.role}
-
-
-async def get_settings():
-    return await db.settings.find_one({"_id": "global"}) or {}
+    return {"id": u.id, "username": u.username, "email": u.email, "role": u.role, "blocked": u.blocked}
 
 
 async def get_identity(request: Request):
@@ -266,20 +269,22 @@ async def require_user(request: Request) -> User:
 
 async def require_admin(request: Request):
     p = decode_bearer(request)
-    if not p:
-        raise HTTPException(401, "Accesso admin richiesto")
-    if p.get("type") == "pin" and p.get("role") == "admin":
-        st = await get_settings()
-        if p.get("pv") == st.get("pin_version", 1):
-            return p
-    if p.get("type") == "access":
+    u = None
+    if p and p.get("type") == "access":
         try:
             u = await db.users.find_one({"_id": ObjectId(p["sub"])})
         except Exception:
             u = None
-        if u and u.get("role") == "admin":
-            return p
-    raise HTTPException(401, "Accesso admin richiesto")
+    if not u or u.get("role") not in ("admin", "superadmin") or u.get("blocked"):
+        raise HTTPException(401, "Accesso admin richiesto")
+    return u
+
+
+async def require_member(request: Request) -> User:
+    u = await require_user(request)
+    if u.blocked:
+        raise HTTPException(403, "Il tuo account è sospeso")
+    return u
 
 
 async def check_lock(identifier: str):
@@ -320,7 +325,7 @@ def event_window(it: Item):
 
 
 def is_expired(it: Item) -> bool:
-    if it.kind != "event":
+    if it.kind not in DATED:
         return False
     _, end = event_window(it)
     return bool(end and end < datetime.now(ROME))
@@ -349,7 +354,7 @@ def validate_item(data: dict):
         raise HTTPException(422, "Tipo non valido")
     for f in ("instagram", "info_link", "image_url"):
         data[f] = safe_url(data.get(f, ""))
-    if data["kind"] == "event":
+    if data["kind"] in DATED:
         try:
             date.fromisoformat(data.get("start_date") or "")
         except ValueError:
@@ -386,7 +391,7 @@ async def present(items, ident=None, admin=False):
         created_by = d.pop("created_by", None)
         d.update(level=level(score), display_count=score if score > 0 and score >= thr else None,
                  my_vote=my_votes.get(it.id), saved=it.id in saved, _score=score, _tonight=True, _weekend=True)
-        if it.kind == "event":
+        if it.kind in DATED:
             s, e = event_window(it)
             if s:
                 live = s <= now_r <= e
@@ -406,7 +411,7 @@ def clean(d):
 
 async def load_public_items():
     docs = await db.items.find({"status": "approved"}).to_list(2000)
-    return [i for i in (Item.from_mongo(d) for d in docs) if not is_expired(i)]
+    return [i for i in (Item.from_mongo(d) for d in docs) if not is_expired(i) and i.kind not in HIDDEN_CATS]
 
 
 def spotted_public(s: Spotted, mine=None):
@@ -463,8 +468,8 @@ async def root():
 async def home(request: Request):
     ident = await get_identity(request)
     pres = await present(await load_public_items(), ident)
-    featured = sorted([p for p in pres if p["featured"]], key=lambda p: (p["kind"] != "event", p.get("start_iso", "")))
-    trending = [p for p in pres if (p["kind"] == "event" and p["_tonight"]) or (p["kind"] != "event" and p["_score"] > 0)]
+    featured = sorted([p for p in pres if p["featured"]], key=lambda p: (p["kind"] not in DATED, p.get("start_iso", "")))
+    trending = [p for p in pres if (p["kind"] in DATED and p["_tonight"]) or (p["kind"] not in DATED and p["_score"] > 0)]
     trending.sort(key=lambda p: (-p["_score"], not p.get("live", False)))
     st = await get_settings()
     return {"featured": [clean(p) for p in featured], "trending": [clean(p) for p in trending[:10]],
@@ -510,15 +515,16 @@ async def vote(item_id: str, body: VoteIn, request: Request):
     voter = need_voter(ident)
     it = await get_public_item(item_id)
     now = now_utc()
+    tr = await get_settings()
     existing = await db.votes.find_one({"item_id": it.id, "voter": voter})
     if existing and existing["expires_at"] > now and existing["type"] == body.type:
         await db.votes.delete_one({"_id": existing["_id"]})
     else:
         if body.type == "here":
-            exp = now + timedelta(hours=4)
+            exp = now + timedelta(hours=int(tr.get("here_hours", 4)))
         else:
-            exp = now + timedelta(hours=12)
-            if it.kind == "event":
+            exp = now + timedelta(hours=int(tr.get("going_hours", 12)))
+            if it.kind in DATED:
                 _, end = event_window(it)
                 if end:
                     exp = max(now + timedelta(minutes=5), end.astimezone(timezone.utc))
@@ -538,32 +544,8 @@ async def save_item(item_id: str, request: Request):
     return clean((await present([it], ident))[0])
 
 
-@api.post("/submissions/item")
-async def submit_item(body: ItemIn, request: Request):
-    ident = await get_identity(request)
-    data = body.model_dump()
-    validate_item(data)
-    it = Item(**data, status="pending", created_by=ident["voter"])
-    await db.items.insert_one(it.to_mongo())
-    return {"ok": True}
-
-
-@api.post("/submissions/spotted")
-async def submit_spotted(body: SpottedIn, request: Request):
-    ident = await get_identity(request)
-    data = body.model_dump()
-    if data["tag"] not in SPOT_TAGS:
-        data["tag"] = "altro"
-    code = None
-    if not ident["user"]:
-        code = "SPOT-" + secrets.token_hex(3).upper()
-    sp = Spotted(**data, status="pending", owner_user=ident["user"].id if ident["user"] else None, owner_code=code)
-    await db.spotted.insert_one(sp.to_mongo())
-    return {"ok": True, "code": code}
-
-
 @api.post("/upload")
-async def upload(file: UploadFile = File(...)):
+async def upload(file: UploadFile = File(...), user: User = Depends(require_member)):
     if not (file.content_type or "").startswith("image/"):
         raise HTTPException(422, "Carica solo immagini")
     data = await file.read()
@@ -592,91 +574,484 @@ async def download(path: str):
                     headers={"Cache-Control": "public, max-age=604800"})
 
 
-# ---------- spotted ----------
-async def my_reactions(voter, ids):
-    out = {}
-    if voter:
-        async for r in db.spotted_reactions.find({"voter": voter, "spotted_id": {"$in": ids}}):
-            out.setdefault(r["spotted_id"], []).append(r["type"])
+# ---------- dynamic structure & config ----------
+async def refresh_kinds():
+    KINDS.clear(); DATED.clear(); HIDDEN_CATS.clear()
+    async for c in db.categories.find():
+        KINDS.add(c["slug"])
+        if c.get("dated"):
+            DATED.add(c["slug"])
+        if c.get("hidden"):
+            HIDDEN_CATS.add(c["slug"])
+
+
+def doc_out(d):
+    o = {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in d.items() if k != "_id"}
+    o["id"] = str(d["_id"])
+    return o
+
+
+def slugify(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or "voce"
+
+
+async def get_config():
+    stored = await db.config.find_one({"_id": "app"}) or {}
+    return {**copy.deepcopy(DEFAULT_CONFIG), **stored}
+
+
+async def get_settings():
+    return (await get_config())["trend"]
+
+
+def today_rome():
+    return datetime.now(ROME).date().isoformat()
+
+
+def in_dates(d, today):
+    return (not d.get("start") or d["start"] <= today) and (not d.get("end") or d["end"] >= today)
+
+
+def resolve_home(home):
+    today, wd = today_rome(), str(datetime.now(ROME).weekday())
+    sch = home.get("schedules", [])
+    m = next((s for s in sch if s.get("date") == today), None) or next((s for s in sch if not s.get("date") and str(s.get("day", "")) == wd), None)
+    a = home.get("alert") or {}
+    alert = a if a.get("active") and a.get("text") and in_dates(a, today) else None
+    return {**home, "title": (m or {}).get("title") or home["title"], "subtitle": (m or {}).get("subtitle") or home["subtitle"], "alert": alert}
+
+
+def public_post_q(slug=None):
+    q = {"status": "approved", "completed": {"$ne": True}, "$or": [{"expires_at": None}, {"expires_at": {"$gt": now_utc()}}]}
+    if slug:
+        q["section"] = slug
+    return q
+
+
+@api.get("/config")
+async def public_config():
+    c = await get_config()
+    cats = [doc_out(x) async for x in db.categories.find({"hidden": {"$ne": True}}).sort("order", 1)]
+    secs = []
+    async for s in db.sections.find({"hidden": {"$ne": True}}).sort("order", 1):
+        o = doc_out(s)
+        o["count"] = await db.posts.count_documents(public_post_q(s["slug"]))
+        secs.append(o)
+    return {"app_name": c["app_name"], "logo_url": c["logo_url"], "texts": c["texts"], "trend": c["trend"], "home": resolve_home(c["home"]),
+            "zones": [z["name"] for z in c["zones"] if not z.get("hidden")], "towns": [t for t in c["towns"] if not t.get("hidden")],
+            "categories": cats, "sections": secs}
+
+
+async def audit(a, action, target=""):
+    await db.audit.insert_one({"user": a.get("username", "?"), "action": action, "target": str(target)[:160], "at": iso_now()})
+
+
+async def require_super(request: Request):
+    a = await require_admin(request)
+    if a.get("role") != "superadmin":
+        raise HTTPException(403, "Solo il Super Admin può farlo")
+    return a
+
+
+CONFIG_KEYS = {"app_name", "logo_url", "texts", "trend", "home", "zones", "towns"}
+
+
+@api.get("/admin/config")
+async def admin_get_config(a=Depends(require_super)):
+    return {k: v for k, v in (await get_config()).items() if k != "_id"}
+
+
+@api.put("/admin/config")
+async def admin_put_config(body: dict, a=Depends(require_super)):
+    upd = {k: v for k, v in body.items() if k in CONFIG_KEYS}
+    if "trend" in upd and not 1 <= int(upd["trend"].get("threshold", 20)) <= 1000:
+        raise HTTPException(422, "La soglia deve essere tra 1 e 1000")
+    await db.config.update_one({"_id": "app"}, {"$set": upd}, upsert=True)
+    await audit(a, "config", ", ".join(upd))
+    return await admin_get_config(a)
+
+
+STRUCT = {"categories": ("items", "kind", {"name", "plural", "icon", "color", "subcategories", "dated", "hidden"}),
+          "sections": ("posts", "section", {"name", "icon", "color", "description", "hidden", "fields", "tags", "reply_label", "requires_approval",
+                                            "duration_days", "reactions", "partner_name", "partner_logo", "expiry_field"})}
+
+
+def struct_meta(coll):
+    if coll not in STRUCT:
+        raise HTTPException(404, "Non trovato")
+    return STRUCT[coll]
+
+
+@api.get("/admin/struct/{coll}")
+async def struct_list(coll: str, a=Depends(require_admin)):
+    content, field, _ = struct_meta(coll)
+    out = []
+    async for d in db[coll].find().sort("order", 1):
+        o = doc_out(d)
+        o["count"] = await db[content].count_documents({field: d["slug"]})
+        out.append(o)
     return out
 
 
-@api.get("/spotted")
-async def list_spotted(request: Request, tag: str = ""):
+@api.post("/admin/struct/{coll}")
+async def struct_create(coll: str, body: dict, a=Depends(require_super)):
+    _, _, keys = struct_meta(coll)
+    data = {k: v for k, v in body.items() if k in keys}
+    if not str(data.get("name", "")).strip():
+        raise HTTPException(422, "Il nome è obbligatorio")
+    base = slugify(data["name"]); slug = base; i = 2
+    while await db[coll].find_one({"slug": slug}):
+        slug = f"{base}-{i}"; i += 1
+    defaults = ({"plural": data["name"], "icon": "Sparkles", "color": "#8B5CF6", "subcategories": [], "dated": False, "hidden": False}
+                if coll == "categories" else
+                {"icon": "Sparkles", "color": "#8B5CF6", "description": "", "hidden": False, "fields": [{"key": "title", "label": "Titolo", "type": "text", "required": True, "options": []},
+                 {"key": "description", "label": "Descrizione", "type": "textarea", "required": False, "options": []}], "tags": [], "reply_label": "Rispondi",
+                 "requires_approval": True, "duration_days": 30, "reactions": True, "partner_name": "", "partner_logo": "", "expiry_field": ""})
+    doc = {**defaults, **data, "slug": slug, "order": await db[coll].count_documents({})}
+    res = await db[coll].insert_one(doc)
+    await refresh_kinds()
+    await audit(a, f"crea {coll}", data["name"])
+    return doc_out({**doc, "_id": res.inserted_id})
+
+
+@api.put("/admin/struct/{coll}/{sid}")
+async def struct_update(coll: str, sid: str, body: dict, a=Depends(require_super)):
+    _, _, keys = struct_meta(coll)
+    data = {k: v for k, v in body.items() if k in keys}
+    if coll == "sections" and "fields" in data:
+        for f in data["fields"]:
+            f["key"] = f.get("key") or slugify(f.get("label", "campo")).replace("-", "_")
+    res = await db[coll].update_one({"_id": oid(sid)}, {"$set": data})
+    if not res.matched_count:
+        raise HTTPException(404, "Non trovato")
+    await refresh_kinds()
+    await audit(a, f"modifica {coll}", data.get("name", sid))
+    return doc_out(await db[coll].find_one({"_id": oid(sid)}))
+
+
+@api.delete("/admin/struct/{coll}/{sid}")
+async def struct_delete(coll: str, sid: str, move_to: str = "", a=Depends(require_super)):
+    content, field, _ = struct_meta(coll)
+    d = await db[coll].find_one({"_id": oid(sid)})
+    if not d:
+        raise HTTPException(404, "Non trovato")
+    n = await db[content].count_documents({field: d["slug"]})
+    if n and not move_to:
+        raise HTTPException(409, f"Contiene {n} contenuti: spostali prima in un'altra voce")
+    if n:
+        if move_to == d["slug"] or not await db[coll].find_one({"slug": move_to}):
+            raise HTTPException(422, "Destinazione non valida")
+        await db[content].update_many({field: d["slug"]}, {"$set": {field: move_to}})
+    await db[coll].delete_one({"_id": d["_id"]})
+    await refresh_kinds()
+    await audit(a, f"elimina {coll}", d["name"])
+    return {"ok": True}
+
+
+class IdsIn(BaseModel):
+    ids: list
+
+
+@api.post("/admin/struct/{coll}/reorder")
+async def struct_reorder(coll: str, body: IdsIn, a=Depends(require_super)):
+    struct_meta(coll)
+    for i, sid in enumerate(body.ids):
+        await db[coll].update_one({"_id": oid(sid)}, {"$set": {"order": i}})
+    return {"ok": True}
+
+
+# ---------- bacheca (posts) ----------
+class PostIn(BaseModel):
+    data: dict
+    tag: str = ""
+
+
+async def get_section(slug, public=True):
+    s = await db.sections.find_one({"slug": slug})
+    if not s or (public and s.get("hidden")):
+        raise HTTPException(404, "Sezione non trovata")
+    return s
+
+
+def title_of(sec, data):
+    if data.get("from") and data.get("to"):
+        return f"{data['from']} → {data['to']}"
+    for f in sec.get("fields", []):
+        if f.get("type") in ("text", "place", "select") and str(data.get(f["key"], "")).strip():
+            return str(data[f["key"]])[:140]
+    return sec["name"]
+
+
+def clean_post(sec, data, tag, old=None):
+    out = dict(old or {})
+    for f in sec.get("fields", []):
+        v = data.get(f["key"], "")
+        v = "" if v is None else str(v).strip()[:2000]
+        if f.get("required") and not v:
+            raise HTTPException(422, f"Compila il campo: {f['label']}")
+        out[f["key"]] = safe_url(v) if f.get("type") in ("link", "photo") else v
+    return out, (tag if tag in sec.get("tags", []) else "")
+
+
+def post_expiry(sec, data):
+    ef = sec.get("expiry_field")
+    if ef and data.get(ef):
+        try:
+            return datetime.combine(date.fromisoformat(data[ef]), time(23, 59), tzinfo=ROME).astimezone(timezone.utc)
+        except ValueError:
+            pass
+    days = int(sec.get("duration_days") or 0)
+    return now_utc() + timedelta(days=days) if days > 0 else None
+
+
+def post_out(d, mine=None, admin=False):
+    o = doc_out(d)
+    if not admin:
+        o.pop("owner_user", None); o.pop("owner_name", None)
+    o["my_reactions"] = mine or []
+    return o
+
+
+async def post_reacts(voter, ids):
+    out = {}
+    if voter:
+        async for r in db.post_reactions.find({"voter": voter, "post_id": {"$in": ids}}):
+            out.setdefault(r["post_id"], []).append(r["type"])
+    return out
+
+
+@api.get("/board/{slug}")
+async def board_section(slug: str, request: Request, tag: str = "", q: str = ""):
+    sec = await get_section(slug)
     ident = await get_identity(request)
-    query = {"status": "approved"}
-    if tag in SPOT_TAGS:
+    query = public_post_q(slug)
+    if tag:
         query["tag"] = tag
-    items = [Spotted.from_mongo(d) for d in await db.spotted.find(query).sort("created_at", -1).to_list(500)]
-    mine = await my_reactions(ident["voter"], [s.id for s in items])
-    return [spotted_public(s, mine.get(s.id)) for s in items]
+    docs = await db.posts.find(query).sort("created_at", -1).to_list(1000)
+    q = q.strip().lower()
+    if q:
+        docs = [d for d in docs if q in d.get("title", "").lower() or any(q in str(v).lower() for v in d.get("data", {}).values())]
+    mine = await post_reacts(ident["voter"], [str(d["_id"]) for d in docs])
+    return {"section": doc_out(sec), "posts": [post_out(d, mine.get(str(d["_id"]))) for d in docs]}
 
 
-@api.get("/spotted/{sid}")
-async def get_spotted(sid: str, request: Request):
-    ident = await get_identity(request)
-    s = Spotted.from_mongo(await db.spotted.find_one({"_id": oid(sid), "status": "approved"}))
-    if not s:
-        raise HTTPException(404, "Spotted non trovato")
-    mine = await my_reactions(ident["voter"], [s.id])
-    return spotted_public(s, mine.get(s.id))
+async def public_post(pid):
+    d = await db.posts.find_one({**public_post_q(), "_id": oid(pid)})
+    if not d:
+        raise HTTPException(404, "Annuncio non trovato")
+    return d
 
 
-@api.post("/spotted/{sid}/react")
-async def react(sid: str, body: ReactIn, request: Request):
+@api.post("/board/{slug}/posts")
+async def create_post(slug: str, body: PostIn, user: User = Depends(require_member)):
+    sec = await get_section(slug)
+    data, tag = clean_post(sec, body.data, body.tag)
+    status = "pending" if sec.get("requires_approval") else "approved"
+    await db.posts.insert_one({"section": slug, "data": data, "tag": tag, "title": title_of(sec, data), "status": status, "reject_reason": "",
+                               "completed": False, "reactions": {"heart": 0, "eyes": 0, "fire": 0}, "owner_user": user.id,
+                               "owner_name": user.username, "created_at": iso_now(), "expires_at": post_expiry(sec, data)})
+    return {"ok": True, "status": status}
+
+
+@api.post("/posts/{pid}/react")
+async def post_react(pid: str, body: ReactIn, request: Request):
     if body.type not in REACTIONS:
         raise HTTPException(422, "Reazione non valida")
     ident = await get_identity(request)
     voter = need_voter(ident)
-    s = Spotted.from_mongo(await db.spotted.find_one({"_id": oid(sid), "status": "approved"}))
-    if not s:
-        raise HTTPException(404, "Spotted non trovato")
-    res = await db.spotted_reactions.delete_one({"spotted_id": s.id, "voter": voter, "type": body.type})
+    d = await public_post(pid)
+    sec = await get_section(d["section"])
+    if not sec.get("reactions", True):
+        raise HTTPException(403, "Reazioni disattivate")
+    res = await db.post_reactions.delete_one({"post_id": pid, "voter": voter, "type": body.type})
     inc = -1 if res.deleted_count else 1
     if inc == 1:
         try:
-            await db.spotted_reactions.insert_one({"spotted_id": s.id, "voter": voter, "type": body.type})
+            await db.post_reactions.insert_one({"post_id": pid, "voter": voter, "type": body.type})
         except DuplicateKeyError:
             inc = 0
     if inc:
-        await db.spotted.update_one({"_id": ObjectId(s.id)}, {"$inc": {f"reactions.{body.type}": inc}})
-    s = Spotted.from_mongo(await db.spotted.find_one({"_id": ObjectId(s.id)}))
-    mine = await my_reactions(voter, [s.id])
-    return spotted_public(s, mine.get(s.id))
+        await db.posts.update_one({"_id": d["_id"]}, {"$inc": {f"reactions.{body.type}": inc}})
+    d = await db.posts.find_one({"_id": d["_id"]})
+    return post_out(d, (await post_reacts(voter, [pid])).get(pid))
 
 
-@api.post("/spotted/{sid}/reply")
-async def reply(sid: str, body: ReplyIn, request: Request):
-    ident = await get_identity(request)
-    s = await db.spotted.find_one({"_id": oid(sid), "status": "approved"})
-    if not s:
-        raise HTTPException(404, "Spotted non trovato")
-    await db.spotted_replies.insert_one({"spotted_id": str(s["_id"]), "message": body.message.strip(),
-                                         "contact": body.contact.strip(), "voter": ident["voter"],
-                                         "created_at": iso_now()})
+@api.post("/posts/{pid}/reply")
+async def post_reply(pid: str, body: ReplyIn, user: User = Depends(require_member)):
+    d = await public_post(pid)
+    await db.post_replies.insert_one({"post_id": pid, "post_title": d["title"], "section": d["section"], "owner_user": d.get("owner_user"),
+                                      "from_user": user.id, "from_name": user.username, "message": body.message.strip(),
+                                      "contact": body.contact.strip(), "read": False, "created_at": iso_now()})
     return {"ok": True}
 
 
-async def replies_for(sid: str):
-    docs = await db.spotted_replies.find({"spotted_id": sid}).sort("created_at", -1).to_list(500)
-    return [{"id": str(d["_id"]), "message": d["message"], "contact": d["contact"], "created_at": d["created_at"]}
-            for d in docs]
+class ReportIn(BaseModel):
+    target_type: str
+    target_id: str
+    reason: str = Field(default="", max_length=500)
 
 
-@api.post("/spotted-code")
-async def spotted_by_code(body: CodeIn, request: Request):
-    key = f"code:{client_ip(request)}"
-    await check_lock(key)
-    code = body.code.strip().upper()
-    s = Spotted.from_mongo(await db.spotted.find_one({"owner_code": code})) if code else None
-    if not s:
-        await register_fail(key)
-        raise HTTPException(404, "Codice non valido")
-    return {"spotted": spotted_public(s), "replies": await replies_for(s.id)}
+@api.post("/reports")
+async def report(body: ReportIn, user: User = Depends(require_member)):
+    if body.target_type not in ("item", "post"):
+        raise HTTPException(422, "Tipo non valido")
+    coll = db.items if body.target_type == "item" else db.posts
+    t = await coll.find_one({"_id": oid(body.target_id)})
+    if not t:
+        raise HTTPException(404, "Contenuto non trovato")
+    await db.reports.insert_one({"target_type": body.target_type, "target_id": body.target_id, "title": t.get("title", ""), "reason": body.reason,
+                                 "by_user": user.username, "status": "open", "created_at": iso_now()})
+    return {"ok": True}
 
 
-# ---------- auth ----------
+# ---------- polls ----------
+class PollVoteIn(BaseModel):
+    option: int
+
+
+class PollIn(BaseModel):
+    question: str = Field(min_length=3, max_length=200)
+    options: list
+    image_url: str = ""
+    comment: str = ""
+    start_date: str = ""
+
+
+def poll_out(p, my=None, show=True):
+    o = doc_out(p)
+    total = sum(x["votes"] for x in p["options"])
+    o.update(total=total, my_vote=my)
+    o["options"] = [{"text": x["text"], **({"votes": x["votes"], "pct": round(100 * x["votes"] / total) if total else 0} if show else {})} for x in p["options"]]
+    if not show:
+        o.pop("comment", None); o["total"] = None
+    return o
+
+
+@api.get("/poll")
+async def get_poll(request: Request):
+    p = await db.polls.find_one({"status": "open", "start_date": {"$lte": today_rome()}}, sort=[("start_date", -1), ("created_at", -1)])
+    if not p:
+        return None
+    ident = await get_identity(request)
+    v = await db.poll_votes.find_one({"poll_id": str(p["_id"]), "voter": ident["voter"]}) if ident["voter"] else None
+    return poll_out(p, v["option"] if v else None, show=bool(v))
+
+
+@api.post("/poll/{pid}/vote")
+async def vote_poll(pid: str, body: PollVoteIn, request: Request):
+    voter = need_voter(await get_identity(request))
+    p = await db.polls.find_one({"_id": oid(pid), "status": "open"})
+    if not p or not 0 <= body.option < len(p["options"]):
+        raise HTTPException(404, "Sondaggio non disponibile")
+    try:
+        await db.poll_votes.insert_one({"poll_id": pid, "voter": voter, "option": body.option})
+    except DuplicateKeyError:
+        raise HTTPException(409, "Hai già votato")
+    await db.polls.update_one({"_id": p["_id"]}, {"$inc": {f"options.{body.option}.votes": 1}})
+    return poll_out(await db.polls.find_one({"_id": p["_id"]}), body.option)
+
+
+def poll_doc(body: PollIn):
+    opts = [str(o).strip()[:80] for o in body.options if str(o).strip()]
+    if not 2 <= len(opts) <= 4:
+        raise HTTPException(422, "Servono da 2 a 4 opzioni")
+    return {"question": body.question, "image_url": safe_url(body.image_url), "comment": body.comment[:300],
+            "start_date": body.start_date or today_rome()}, opts
+
+
+@api.get("/admin/polls")
+async def admin_polls(a=Depends(require_admin)):
+    return [poll_out(p) for p in await db.polls.find().sort([("start_date", -1), ("created_at", -1)]).to_list(300)]
+
+
+@api.post("/admin/polls")
+async def admin_create_poll(body: PollIn, a=Depends(require_admin)):
+    d, opts = poll_doc(body)
+    await db.polls.insert_one({**d, "options": [{"text": o, "votes": 0} for o in opts], "status": "open", "created_at": iso_now()})
+    await audit(a, "crea sondaggio", d["question"])
+    return {"ok": True}
+
+
+@api.put("/admin/polls/{pid}")
+async def admin_update_poll(pid: str, body: PollIn, a=Depends(require_admin)):
+    p = await db.polls.find_one({"_id": oid(pid)})
+    if not p:
+        raise HTTPException(404, "Sondaggio non trovato")
+    d, opts = poll_doc(body)
+    old = p["options"]
+    d["options"] = [{"text": t, "votes": old[i]["votes"] if i < len(old) else 0} for i, t in enumerate(opts)]
+    await db.polls.update_one({"_id": p["_id"]}, {"$set": d})
+    await audit(a, "modifica sondaggio", d["question"])
+    return {"ok": True}
+
+
+@api.post("/admin/polls/{pid}/close")
+async def admin_close_poll(pid: str, a=Depends(require_admin)):
+    await db.polls.update_one({"_id": oid(pid)}, {"$set": {"status": "closed"}})
+    await audit(a, "chiude sondaggio", pid)
+    return {"ok": True}
+
+
+@api.delete("/admin/polls/{pid}")
+async def admin_delete_poll(pid: str, a=Depends(require_admin)):
+    await db.polls.delete_one({"_id": oid(pid)})
+    await db.poll_votes.delete_many({"poll_id": pid})
+    await audit(a, "elimina sondaggio", pid)
+    return {"ok": True}
+
+
+# ---------- banners ----------
+BANNER_KEYS = {"image_url", "title", "text", "cta", "link", "position", "every_n", "start", "end", "active", "priority"}
+
+
+@api.get("/banners")
+async def get_banners(position: str):
+    today = today_rome()
+    docs = await db.banners.find({"active": True, "position": position}).sort("priority", -1).to_list(50)
+    docs = [d for d in docs if in_dates(d, today)]
+    if docs:
+        await db.banners.update_many({"_id": {"$in": [d["_id"] for d in docs]}}, {"$inc": {"views": 1}})
+    return [{k: v for k, v in doc_out(d).items() if k not in ("views", "clicks")} for d in docs]
+
+
+@api.post("/banners/{bid}/click")
+async def click_banner(bid: str):
+    await db.banners.update_one({"_id": oid(bid)}, {"$inc": {"clicks": 1}})
+    return {"ok": True}
+
+
+@api.get("/admin/banners")
+async def admin_banners(a=Depends(require_super)):
+    return [doc_out(d) for d in await db.banners.find().sort("priority", -1).to_list(300)]
+
+
+@api.post("/admin/banners")
+async def admin_create_banner(body: dict, a=Depends(require_super)):
+    d = {k: v for k, v in body.items() if k in BANNER_KEYS}
+    d = {"image_url": "", "title": "", "text": "", "cta": "Scopri", "link": "", "position": "home_top", "every_n": 5, "start": "", "end": "",
+         "active": True, "priority": 0, **d, "views": 0, "clicks": 0, "created_at": iso_now()}
+    await db.banners.insert_one(d)
+    await audit(a, "crea banner", d.get("title"))
+    return {"ok": True}
+
+
+@api.put("/admin/banners/{bid}")
+async def admin_update_banner(bid: str, body: dict, a=Depends(require_super)):
+    await db.banners.update_one({"_id": oid(bid)}, {"$set": {k: v for k, v in body.items() if k in BANNER_KEYS}})
+    await audit(a, "modifica banner", body.get("title", bid))
+    return {"ok": True}
+
+
+@api.delete("/admin/banners/{bid}")
+async def admin_delete_banner(bid: str, a=Depends(require_super)):
+    await db.banners.delete_one({"_id": oid(bid)})
+    await audit(a, "elimina banner", bid)
+    return {"ok": True}
+
+
+# ---------- auth & account ----------
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9_.]{3,30}$")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 @api.post("/auth/register")
@@ -684,16 +1059,14 @@ async def register(body: RegisterIn):
     username, email = body.username.strip(), body.email.strip().lower()
     if not USERNAME_RE.match(username):
         raise HTTPException(422, "Username: 3–30 caratteri tra lettere, numeri, _ e .")
-    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+    if not EMAIL_RE.match(email):
         raise HTTPException(422, "Email non valida")
     if len(body.password) < 6:
         raise HTTPException(422, "La password deve avere almeno 6 caratteri")
     if await db.users.find_one({"$or": [{"email": email}, {"username_lower": username.lower()}]}):
         raise HTTPException(409, "Username o email già registrati")
     u = User(username=username, email=email, password_hash=hash_pw(body.password))
-    doc = u.to_mongo()
-    doc["username_lower"] = username.lower()
-    res = await db.users.insert_one(doc)
+    res = await db.users.insert_one({**u.to_mongo(), "username_lower": username.lower()})
     u.id = str(res.inserted_id)
     return {"token": make_token(u.id, u.role, "access", 24 * 30), "user": user_out(u)}
 
@@ -716,6 +1089,54 @@ async def me(user: User = Depends(require_user)):
     return user_out(user)
 
 
+class PasswordIn(BaseModel):
+    old_password: str
+    new_password: str
+
+
+class EmailIn(BaseModel):
+    email: str
+    password: str
+
+
+class ConfirmIn(BaseModel):
+    password: str
+
+
+@api.put("/me/password")
+async def change_password(body: PasswordIn, user: User = Depends(require_user)):
+    if not check_pw(body.old_password, user.password_hash):
+        raise HTTPException(401, "Password attuale non corretta")
+    if len(body.new_password) < 6:
+        raise HTTPException(422, "La nuova password deve avere almeno 6 caratteri")
+    await db.users.update_one({"_id": ObjectId(user.id)}, {"$set": {"password_hash": hash_pw(body.new_password)}})
+    return {"ok": True}
+
+
+@api.put("/me/email")
+async def change_email(body: EmailIn, user: User = Depends(require_user)):
+    email = body.email.strip().lower()
+    if not check_pw(body.password, user.password_hash):
+        raise HTTPException(401, "Password non corretta")
+    if not EMAIL_RE.match(email):
+        raise HTTPException(422, "Email non valida")
+    if await db.users.find_one({"email": email, "_id": {"$ne": ObjectId(user.id)}}):
+        raise HTTPException(409, "Email già in uso")
+    await db.users.update_one({"_id": ObjectId(user.id)}, {"$set": {"email": email}})
+    return {**user_out(user), "email": email}
+
+
+@api.post("/me/delete")
+async def delete_account(body: ConfirmIn, user: User = Depends(require_user)):
+    if not check_pw(body.password, user.password_hash):
+        raise HTTPException(401, "Password non corretta")
+    if user.role == "superadmin":
+        raise HTTPException(403, "Il Super Admin non può eliminarsi")
+    await db.users.delete_one({"_id": ObjectId(user.id)})
+    await db.posts.delete_many({"owner_user": user.id})
+    return {"ok": True}
+
+
 @api.get("/me/saved")
 async def my_saved(request: Request):
     ident = await get_identity(request)
@@ -726,60 +1147,113 @@ async def my_saved(request: Request):
     return [clean(p) for p in await present(items, ident)]
 
 
-@api.get("/me/spotted")
-async def my_spotted(user: User = Depends(require_user)):
-    out = []
-    async for d in db.spotted.find({"owner_user": user.id}).sort("created_at", -1):
-        s = Spotted.from_mongo(d)
-        out.append({**spotted_public(s), "replies": await replies_for(s.id)})
-    return out
+@api.get("/me/inbox")
+async def my_inbox(user: User = Depends(require_user)):
+    return [doc_out(d) for d in await db.post_replies.find({"owner_user": user.id}).sort("created_at", -1).to_list(500)]
 
 
-@api.get("/me/submissions")
-async def my_submissions(user: User = Depends(require_user)):
+@api.get("/me/unread")
+async def my_unread(user: User = Depends(require_user)):
+    return {"count": await db.post_replies.count_documents({"owner_user": user.id, "read": False})}
+
+
+@api.post("/me/inbox/read")
+async def mark_read(user: User = Depends(require_user)):
+    await db.post_replies.update_many({"owner_user": user.id}, {"$set": {"read": True}})
+    return {"ok": True}
+
+
+@api.get("/me/listings")
+async def my_listings(user: User = Depends(require_user)):
     out = []
     async for d in db.items.find({"created_by": f"u:{user.id}"}):
         it = Item.from_mongo(d)
-        out.append({"id": it.id, "type": "item", "kind": it.kind, "title": it.title, "status": it.status,
-                    "created_at": it.created_at})
-    async for d in db.spotted.find({"owner_user": user.id}):
-        s = Spotted.from_mongo(d)
-        out.append({"id": s.id, "type": "spotted", "kind": "spotted", "title": s.where, "status": s.status,
-                    "created_at": s.created_at})
+        out.append({"id": it.id, "type": "item", "kind": it.kind, "title": it.title, "status": it.status, "reject_reason": it.reject_reason,
+                    "expired": is_expired(it), "completed": False, "created_at": it.created_at, "item": it.model_dump()})
+    now = now_utc()
+    async for d in db.posts.find({"owner_user": user.id}):
+        o = post_out(d, admin=True)
+        out.append({"id": o["id"], "type": "post", "kind": d["section"], "title": d["title"], "status": d["status"],
+                    "reject_reason": d.get("reject_reason", ""), "completed": d.get("completed", False),
+                    "expired": bool(d.get("expires_at") and d["expires_at"] < now), "created_at": d["created_at"], "post": o})
     out.sort(key=lambda x: x["created_at"], reverse=True)
     return out
 
 
-# ---------- admin ----------
-@api.post("/admin/pin")
-async def admin_pin(body: PinIn, request: Request):
-    key = f"pin:{client_ip(request)}"
-    await check_lock(key)
-    st = await get_settings()
-    if not check_pw(body.pin, st.get("admin_pin_hash", "")):
-        await register_fail(key)
-        raise HTTPException(401, "PIN non corretto")
-    await db.login_attempts.delete_one({"identifier": key})
-    return {"token": make_token("pin-admin", "admin", "pin", 24, pv=st.get("pin_version", 1))}
+async def own_post(pid, user):
+    d = await db.posts.find_one({"_id": oid(pid), "owner_user": user.id})
+    if not d:
+        raise HTTPException(404, "Annuncio non trovato")
+    return d
 
 
-@api.get("/admin/check")
-async def admin_check(_=Depends(require_admin)):
+@api.put("/me/posts/{pid}")
+async def edit_my_post(pid: str, body: PostIn, user: User = Depends(require_member)):
+    d = await own_post(pid, user)
+    sec = await get_section(d["section"], public=False)
+    data, tag = clean_post(sec, body.data, body.tag, d.get("data"))
+    upd = {"data": data, "tag": tag, "title": title_of(sec, data), "expires_at": post_expiry(sec, data), "reject_reason": ""}
+    if sec.get("requires_approval"):
+        upd["status"] = "pending"
+    await db.posts.update_one({"_id": d["_id"]}, {"$set": upd})
+    return {"ok": True, "status": upd.get("status", d["status"])}
+
+
+@api.post("/me/posts/{pid}/complete")
+async def complete_my_post(pid: str, user: User = Depends(require_user)):
+    d = await own_post(pid, user)
+    await db.posts.update_one({"_id": d["_id"]}, {"$set": {"completed": not d.get("completed", False)}})
     return {"ok": True}
 
 
+@api.delete("/me/posts/{pid}")
+async def delete_my_post(pid: str, user: User = Depends(require_user)):
+    d = await own_post(pid, user)
+    await db.posts.delete_one({"_id": d["_id"]})
+    return {"ok": True}
+
+
+@api.put("/me/items/{item_id}")
+async def edit_my_item(item_id: str, body: ItemIn, user: User = Depends(require_member)):
+    data = body.model_dump()
+    validate_item(data)
+    res = await db.items.update_one({"_id": oid(item_id), "created_by": f"u:{user.id}"}, {"$set": {**data, "status": "pending", "reject_reason": ""}})
+    if not res.matched_count:
+        raise HTTPException(404, "Elemento non trovato")
+    return {"ok": True}
+
+
+@api.delete("/me/items/{item_id}")
+async def delete_my_item(item_id: str, user: User = Depends(require_user)):
+    await db.items.delete_one({"_id": oid(item_id), "created_by": f"u:{user.id}"})
+    return {"ok": True}
+
+
+@api.post("/submissions/item")
+async def submit_item(body: ItemIn, user: User = Depends(require_member)):
+    data = body.model_dump()
+    validate_item(data)
+    await db.items.insert_one(Item(**data, status="pending", created_by=f"u:{user.id}").to_mongo())
+    return {"ok": True}
+
+
+# ---------- admin: moderation & content ----------
+@api.get("/admin/check")
+async def admin_check(a=Depends(require_admin)):
+    return {"ok": True, "role": a["role"]}
+
+
 @api.get("/admin/pending")
-async def admin_pending(_=Depends(require_admin)):
+async def admin_pending(a=Depends(require_admin)):
     items = [Item.from_mongo(d) for d in await db.items.find({"status": "pending"}).sort("created_at", -1).to_list(500)]
-    sps = [Spotted.from_mongo(d) for d in await db.spotted.find({"status": "pending"}).sort("created_at", -1).to_list(500)]
-    return {"items": [clean(p) for p in await present(items, admin=True)],
-            "spotted": [s.model_dump(exclude={"owner_code"}) for s in sps]}
+    posts = await db.posts.find({"status": "pending"}).sort("created_at", -1).to_list(500)
+    return {"items": [clean(p) for p in await present(items, admin=True)], "posts": [post_out(d, admin=True) for d in posts]}
 
 
 @api.get("/admin/items")
-async def admin_items(kind: str = "", status: str = "approved", _=Depends(require_admin)):
+async def admin_items(kind: str = "", status: str = "approved", a=Depends(require_admin)):
     query = {}
-    if kind in KINDS:
+    if kind:
         query["kind"] = kind
     if status in ("approved", "pending", "rejected"):
         query["status"] = status
@@ -795,162 +1269,324 @@ async def admin_item_out(item_id: str):
 
 
 @api.post("/admin/items")
-async def admin_create_item(body: ItemIn, _=Depends(require_admin)):
+async def admin_create_item(body: ItemIn, a=Depends(require_admin)):
     data = body.model_dump()
     validate_item(data)
     res = await db.items.insert_one(Item(**data, status="approved", created_by="admin").to_mongo())
+    await audit(a, "crea elemento", data["title"])
     return await admin_item_out(str(res.inserted_id))
 
 
 @api.put("/admin/items/{item_id}")
-async def admin_update_item(item_id: str, body: ItemIn, _=Depends(require_admin)):
+async def admin_update_item(item_id: str, body: ItemIn, a=Depends(require_admin)):
     data = body.model_dump()
     validate_item(data)
     res = await db.items.update_one({"_id": oid(item_id)}, {"$set": data})
     if not res.matched_count:
         raise HTTPException(404, "Elemento non trovato")
+    await audit(a, "modifica elemento", data["title"])
     return await admin_item_out(item_id)
 
 
 @api.post("/admin/items/{item_id}/status")
-async def admin_item_status(item_id: str, body: StatusIn, _=Depends(require_admin)):
+async def admin_item_status(item_id: str, body: StatusIn, a=Depends(require_admin)):
     if body.status not in ("approved", "pending", "rejected"):
         raise HTTPException(422, "Stato non valido")
-    await db.items.update_one({"_id": oid(item_id)}, {"$set": {"status": body.status}})
-    return await admin_item_out(item_id)
+    await db.items.update_one({"_id": oid(item_id)}, {"$set": {"status": body.status, "reject_reason": body.reason if body.status == "rejected" else ""}})
+    out = await admin_item_out(item_id)
+    await audit(a, f"stato {body.status}", out["title"])
+    return out
 
 
 @api.post("/admin/items/{item_id}/feature")
-async def admin_item_feature(item_id: str, _=Depends(require_admin)):
+async def admin_item_feature(item_id: str, a=Depends(require_admin)):
     it = await db.items.find_one({"_id": oid(item_id)})
     if not it:
         raise HTTPException(404, "Elemento non trovato")
     await db.items.update_one({"_id": it["_id"]}, {"$set": {"featured": not it.get("featured", False)}})
+    await audit(a, "evidenza", it["title"])
     return await admin_item_out(item_id)
 
 
 @api.post("/admin/items/{item_id}/boost")
-async def admin_item_boost(item_id: str, body: BoostIn, _=Depends(require_admin)):
+async def admin_item_boost(item_id: str, body: BoostIn, a=Depends(require_admin)):
     update = {"$set": {"boost": 0}} if body.amount == 0 else {"$inc": {"boost": max(-100, min(body.amount, 500))}}
     res = await db.items.update_one({"_id": oid(item_id)}, update)
     if not res.matched_count:
         raise HTTPException(404, "Elemento non trovato")
     await db.items.update_one({"_id": oid(item_id), "boost": {"$lt": 0}}, {"$set": {"boost": 0}})
-    return await admin_item_out(item_id)
-
-
-@api.delete("/admin/items/{item_id}")
-async def admin_delete_item(item_id: str, _=Depends(require_admin)):
-    await db.items.delete_one({"_id": oid(item_id)})
-    await db.votes.delete_many({"item_id": item_id})
-    await db.saves.delete_many({"item_id": item_id})
-    return {"ok": True}
-
-
-@api.get("/admin/spotted")
-async def admin_spotted(status: str = "", _=Depends(require_admin)):
-    query = {"status": status} if status in ("approved", "pending", "rejected") else {}
-    docs = await db.spotted.find(query).sort("created_at", -1).to_list(1000)
-    out = []
-    for d in docs:
-        s = Spotted.from_mongo(d)
-        out.append({**s.model_dump(exclude={"owner_code"}),
-                    "reply_count": await db.spotted_replies.count_documents({"spotted_id": s.id})})
+    out = await admin_item_out(item_id)
+    await audit(a, f"boost {body.amount}", out["title"])
     return out
 
 
-@api.post("/admin/spotted")
-async def admin_create_spotted(body: SpottedIn, _=Depends(require_admin)):
-    data = body.model_dump()
-    if data["tag"] not in SPOT_TAGS:
-        data["tag"] = "altro"
-    res = await db.spotted.insert_one(Spotted(**data, status="approved").to_mongo())
-    return {"id": str(res.inserted_id)}
-
-
-@api.put("/admin/spotted/{sid}")
-async def admin_update_spotted(sid: str, body: SpottedIn, _=Depends(require_admin)):
-    data = body.model_dump()
-    if data["tag"] not in SPOT_TAGS:
-        data["tag"] = "altro"
-    res = await db.spotted.update_one({"_id": oid(sid)}, {"$set": data})
-    if not res.matched_count:
-        raise HTTPException(404, "Spotted non trovato")
+@api.delete("/admin/items/{item_id}")
+async def admin_delete_item(item_id: str, a=Depends(require_admin)):
+    it = await db.items.find_one({"_id": oid(item_id)})
+    await db.items.delete_one({"_id": oid(item_id)})
+    await db.votes.delete_many({"item_id": item_id})
+    await db.saves.delete_many({"item_id": item_id})
+    await audit(a, "elimina elemento", (it or {}).get("title", item_id))
     return {"ok": True}
 
 
-@api.post("/admin/spotted/{sid}/status")
-async def admin_spotted_status(sid: str, body: StatusIn, _=Depends(require_admin)):
+class AdminPostIn(PostIn):
+    section: str
+
+
+@api.get("/admin/posts")
+async def admin_posts(section: str = "", status: str = "approved", a=Depends(require_admin)):
+    q = {}
+    if section:
+        q["section"] = section
+    if status:
+        q["status"] = status
+    docs = await db.posts.find(q).sort("created_at", -1).to_list(2000)
+    out = []
+    for d in docs:
+        o = post_out(d, admin=True)
+        o["reply_count"] = await db.post_replies.count_documents({"post_id": o["id"]})
+        out.append(o)
+    return out
+
+
+@api.post("/admin/posts")
+async def admin_create_post(body: AdminPostIn, a=Depends(require_admin)):
+    sec = await get_section(body.section, public=False)
+    data, tag = clean_post(sec, body.data, body.tag)
+    await db.posts.insert_one({"section": sec["slug"], "data": data, "tag": tag, "title": title_of(sec, data), "status": "approved", "reject_reason": "",
+                               "completed": False, "reactions": {"heart": 0, "eyes": 0, "fire": 0}, "owner_user": None,
+                               "owner_name": a["username"], "created_at": iso_now(), "expires_at": post_expiry(sec, data)})
+    await audit(a, "crea annuncio", title_of(sec, data))
+    return {"ok": True}
+
+
+@api.put("/admin/posts/{pid}")
+async def admin_update_post(pid: str, body: PostIn, a=Depends(require_admin)):
+    d = await db.posts.find_one({"_id": oid(pid)})
+    if not d:
+        raise HTTPException(404, "Annuncio non trovato")
+    sec = await get_section(d["section"], public=False)
+    data, tag = clean_post(sec, body.data, body.tag, d.get("data"))
+    await db.posts.update_one({"_id": d["_id"]}, {"$set": {"data": data, "tag": tag, "title": title_of(sec, data)}})
+    await audit(a, "modifica annuncio", title_of(sec, data))
+    return {"ok": True}
+
+
+@api.post("/admin/posts/{pid}/status")
+async def admin_post_status(pid: str, body: StatusIn, a=Depends(require_admin)):
     if body.status not in ("approved", "pending", "rejected"):
         raise HTTPException(422, "Stato non valido")
-    res = await db.spotted.update_one({"_id": oid(sid)}, {"$set": {"status": body.status}})
-    if not res.matched_count:
-        raise HTTPException(404, "Spotted non trovato")
+    d = await db.posts.find_one_and_update({"_id": oid(pid)}, {"$set": {"status": body.status, "reject_reason": body.reason if body.status == "rejected" else ""}})
+    if not d:
+        raise HTTPException(404, "Annuncio non trovato")
+    await audit(a, f"stato {body.status}", d["title"])
     return {"ok": True}
 
 
-@api.delete("/admin/spotted/{sid}")
-async def admin_delete_spotted(sid: str, _=Depends(require_admin)):
-    await db.spotted.delete_one({"_id": oid(sid)})
-    await db.spotted_replies.delete_many({"spotted_id": sid})
-    await db.spotted_reactions.delete_many({"spotted_id": sid})
+@api.delete("/admin/posts/{pid}")
+async def admin_delete_post(pid: str, a=Depends(require_admin)):
+    d = await db.posts.find_one_and_delete({"_id": oid(pid)})
+    await db.post_replies.delete_many({"post_id": pid})
+    await db.post_reactions.delete_many({"post_id": pid})
+    await audit(a, "elimina annuncio", (d or {}).get("title", pid))
     return {"ok": True}
 
 
 @api.get("/admin/replies")
-async def admin_replies(_=Depends(require_admin)):
-    docs = await db.spotted_replies.find().sort("created_at", -1).to_list(1000)
-    sp_ids = list({d["spotted_id"] for d in docs})
-    sps = {str(s["_id"]): s async for s in db.spotted.find({"_id": {"$in": [ObjectId(i) for i in sp_ids]}})}
-    return [{"id": str(d["_id"]), "spotted_id": d["spotted_id"], "message": d["message"], "contact": d["contact"],
-             "created_at": d["created_at"], "spotted_where": sps.get(d["spotted_id"], {}).get("where", "(eliminato)"),
-             "spotted_who": sps.get(d["spotted_id"], {}).get("who", "")} for d in docs]
+async def admin_replies(a=Depends(require_admin)):
+    return [doc_out(d) for d in await db.post_replies.find().sort("created_at", -1).to_list(1000)]
 
 
-@api.get("/admin/settings")
-async def admin_get_settings(_=Depends(require_admin)):
-    return {"threshold": (await get_settings()).get("threshold", 20)}
+@api.get("/admin/reports")
+async def admin_reports(status: str = "open", a=Depends(require_admin)):
+    return [doc_out(d) for d in await db.reports.find({"status": status}).sort("created_at", -1).to_list(500)]
 
 
-@api.put("/admin/settings")
-async def admin_put_settings(body: SettingsIn, _=Depends(require_admin)):
+class ReportActionIn(BaseModel):
+    action: str
+
+
+@api.post("/admin/reports/{rid}/action")
+async def admin_report_action(rid: str, body: ReportActionIn, a=Depends(require_admin)):
+    r = await db.reports.find_one({"_id": oid(rid)})
+    if not r or body.action not in ("hide", "ignore", "block"):
+        raise HTTPException(404, "Segnalazione non trovata")
+    coll = db.items if r["target_type"] == "item" else db.posts
+    if body.action in ("hide", "block"):
+        t = await coll.find_one_and_update({"_id": oid(r["target_id"])}, {"$set": {"status": "rejected", "reject_reason": "Rimosso dopo una segnalazione"}})
+        owner = None
+        if t:
+            cb = str(t.get("created_by") or "")
+            owner = t.get("owner_user") or (cb[2:] if cb.startswith("u:") else None)
+        if body.action == "block" and owner:
+            await db.users.update_one({"_id": oid(owner), "role": {"$ne": "superadmin"}}, {"$set": {"blocked": True}})
+    await db.reports.update_many({"target_id": r["target_id"], "status": "open"}, {"$set": {"status": "ignored" if body.action == "ignore" else "resolved"}})
+    await audit(a, f"segnalazione {body.action}", r.get("title"))
+    return {"ok": True}
+
+
+# ---------- super admin: users, audit, backup, stats ----------
+@api.get("/admin/users")
+async def admin_users(q: str = "", a=Depends(require_super)):
+    query = {"$or": [{"username_lower": {"$regex": re.escape(q.lower())}}, {"email": {"$regex": re.escape(q.lower())}}]} if q else {}
+    out = []
+    for d in await db.users.find(query).sort("created_at", -1).to_list(500):
+        uid = str(d["_id"])
+        out.append({"id": uid, "username": d["username"], "email": d["email"], "role": d.get("role", "user"), "blocked": d.get("blocked", False),
+                    "created_at": d.get("created_at"), "content_count": await db.posts.count_documents({"owner_user": uid}) +
+                    await db.items.count_documents({"created_by": f"u:{uid}"})})
+    return out
+
+
+class UserActionIn(BaseModel):
+    role: Optional[str] = None
+    blocked: Optional[bool] = None
+    password: Optional[str] = None
+
+
+@api.post("/admin/users/{uid}")
+async def admin_user_action(uid: str, body: UserActionIn, a=Depends(require_super)):
+    u = await db.users.find_one({"_id": oid(uid)})
+    if not u or u.get("role") == "superadmin":
+        raise HTTPException(403, "Utente non modificabile")
     upd = {}
-    if body.threshold is not None:
-        if not 1 <= body.threshold <= 1000:
-            raise HTTPException(422, "La soglia deve essere tra 1 e 1000")
-        upd["threshold"] = body.threshold
-    inc = {}
-    if body.new_pin:
-        if len(body.new_pin) < 4:
-            raise HTTPException(422, "Il PIN deve avere almeno 4 caratteri")
-        upd["admin_pin_hash"] = hash_pw(body.new_pin)
-        inc = {"pin_version": 1}
-    op = {"$set": upd}
-    if inc:
-        op["$inc"] = inc
-    if upd:
-        await db.settings.update_one({"_id": "global"}, op, upsert=True)
-    return {"threshold": (await get_settings()).get("threshold", 20), "pin_changed": bool(inc)}
+    if body.role in ("user", "admin"):
+        upd["role"] = body.role
+    if body.blocked is not None:
+        upd["blocked"] = body.blocked
+    if body.password:
+        if len(body.password) < 6:
+            raise HTTPException(422, "Password di almeno 6 caratteri")
+        upd["password_hash"] = hash_pw(body.password)
+    await db.users.update_one({"_id": u["_id"]}, {"$set": upd})
+    await audit(a, "utente " + ", ".join(k for k in upd if k != "password_hash") + (" password" if body.password else ""), u["username"])
+    return {"ok": True}
+
+
+@api.delete("/admin/users/{uid}")
+async def admin_delete_user(uid: str, a=Depends(require_super)):
+    u = await db.users.find_one({"_id": oid(uid)})
+    if not u or u.get("role") == "superadmin":
+        raise HTTPException(403, "Utente non eliminabile")
+    await db.users.delete_one({"_id": u["_id"]})
+    await audit(a, "elimina utente", u["username"])
+    return {"ok": True}
+
+
+@api.get("/admin/audit")
+async def admin_audit(a=Depends(require_super)):
+    return [doc_out(d) for d in await db.audit.find().sort("at", -1).to_list(300)]
+
+
+BACKUP_COLLS = ["items", "posts", "categories", "sections", "polls", "banners", "config", "users", "post_replies", "reports"]
+
+
+@api.get("/admin/backup")
+async def admin_backup(a=Depends(require_super)):
+    data = {}
+    for c in BACKUP_COLLS:
+        docs = await db[c].find().to_list(100000)
+        if c == "users":
+            for d in docs:
+                d.pop("password_hash", None)
+        data[c] = docs
+    await audit(a, "esporta backup")
+    return Response(content=json_util.dumps({"version": 2, "exported_at": iso_now(), "data": data}), media_type="application/json",
+                    headers={"Content-Disposition": f"attachment; filename=backup-cosafare-{today_rome()}.json"})
+
+
+@api.post("/admin/restore")
+async def admin_restore(file: UploadFile = File(...), a=Depends(require_super)):
+    try:
+        payload = json_util.loads(await file.read())["data"]
+    except Exception:
+        raise HTTPException(422, "File di backup non valido")
+    for c in BACKUP_COLLS:
+        if c not in payload:
+            continue
+        docs = payload[c]
+        if c == "users":
+            existing = {d["_id"]: d.get("password_hash") async for d in db.users.find()}
+            for d in docs:
+                d["password_hash"] = existing.get(d["_id"]) or hash_pw(secrets.token_urlsafe(12))
+        await db[c].delete_many({})
+        if docs:
+            await db[c].insert_many(docs)
+    await seed_admin()
+    await refresh_kinds()
+    await audit(a, "ripristina backup")
+    return {"ok": True}
+
+
+@api.get("/admin/stats")
+async def admin_stats(a=Depends(require_admin)):
+    week = (now_utc() - timedelta(days=7)).isoformat()
+    per_section = {}
+    async for s in db.sections.find().sort("order", 1):
+        per_section[s["name"]] = await db.posts.count_documents(public_post_q(s["slug"]))
+    return {"items_active": len(await load_public_items()), "posts_active": sum(per_section.values()), "per_section": per_section,
+            "new_users_7d": await db.users.count_documents({"created_at": {"$gte": week}}),
+            "votes_active": await db.votes.count_documents({"expires_at": {"$gt": now_utc()}}),
+            "pending": await db.items.count_documents({"status": "pending"}) + await db.posts.count_documents({"status": "pending"}),
+            "reports_open": await db.reports.count_documents({"status": "open"})}
 
 
 # ---------- startup ----------
-async def seed_all():
-    if not await db.settings.find_one({"_id": "global"}):
-        await db.settings.insert_one({"_id": "global", "threshold": 20, "pin_version": 1,
-                                      "admin_pin_hash": hash_pw(os.environ["ADMIN_PIN"])})
+async def seed_admin():
     a_user, a_email, a_pw = os.environ["ADMIN_USERNAME"], os.environ["ADMIN_EMAIL"].lower(), os.environ["ADMIN_PASSWORD"]
     existing = await db.users.find_one({"username_lower": a_user.lower()})
     if not existing:
-        doc = User(username=a_user, email=a_email, password_hash=hash_pw(a_pw), role="admin").to_mongo()
-        doc["username_lower"] = a_user.lower()
-        await db.users.insert_one(doc)
-    elif not check_pw(a_pw, existing["password_hash"]) or existing.get("role") != "admin":
-        await db.users.update_one({"_id": existing["_id"]}, {"$set": {"password_hash": hash_pw(a_pw), "role": "admin"}})
+        doc = User(username=a_user, email=a_email, password_hash=hash_pw(a_pw), role="superadmin").to_mongo()
+        await db.users.insert_one({**doc, "username_lower": a_user.lower()})
+    elif existing.get("role") != "superadmin" or existing.get("blocked"):
+        await db.users.update_one({"_id": existing["_id"]}, {"$set": {"role": "superadmin", "blocked": False}})
+
+
+def new_post(sec, data, tag, status="approved", owner=None, owner_name="", created_at=None, reactions=None):
+    return {"section": sec["slug"], "data": data, "tag": tag, "title": title_of(sec, data), "status": status, "reject_reason": "",
+            "completed": False, "reactions": reactions or {"heart": 0, "eyes": 0, "fire": 0}, "owner_user": owner,
+            "owner_name": owner_name, "created_at": created_at or iso_now(), "expires_at": post_expiry(sec, data)}
+
+
+async def migrate_spotted():
+    sec = await db.sections.find_one({"slug": "spotted"})
+    async for s in db.spotted.find():
+        data = {k: s.get(k, "") for k in ("where", "when", "who", "message")}
+        res = await db.posts.insert_one(new_post(sec, data, SPOT_TAG_MAP.get(s.get("tag"), ""), s.get("status", "approved"),
+                                                 s.get("owner_user"), "", s.get("created_at"), s.get("reactions")))
+        async for r in db.spotted_replies.find({"spotted_id": str(s["_id"])}):
+            await db.post_replies.insert_one({"post_id": str(res.inserted_id), "post_title": data["where"], "section": "spotted",
+                                              "owner_user": s.get("owner_user"), "from_user": None, "from_name": "ospite",
+                                              "message": r["message"], "contact": r["contact"], "read": False, "created_at": r["created_at"]})
+    for c in ("spotted", "spotted_replies", "spotted_reactions"):
+        await db[c].drop()
+
+
+async def seed_all():
+    if not await db.config.find_one({"_id": "app"}):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        old = await db.settings.find_one({"_id": "global"})
+        if old:
+            cfg["trend"]["threshold"] = old.get("threshold", 20)
+        await db.config.insert_one(cfg)
+    await seed_admin()
+    today = datetime.now(ROME).date()
     if await db.items.count_documents({}) == 0:
-        items, spotteds = build_seed(datetime.now(ROME).date())
+        items, spotteds = build_seed(today)
         await db.items.insert_many([Item(**i).to_mongo() for i in items])
-        await db.spotted.insert_many([Spotted(**s).to_mongo() for s in spotteds])
-        logger.info("Seed data inserted")
+        await db.spotted.insert_many([{**sp, "created_at": iso_now()} for sp in spotteds])
+    if await db.categories.count_documents({}) == 0:
+        await db.categories.insert_many(copy.deepcopy(DEFAULT_CATEGORIES))
+    if await db.sections.count_documents({}) == 0:
+        await db.sections.insert_many(copy.deepcopy(DEFAULT_SECTIONS))
+    await migrate_spotted()
+    if await db.posts.count_documents({"section": {"$ne": "spotted"}}) == 0:
+        secs = {x["slug"]: x async for x in db.sections.find()}
+        await db.posts.insert_many([new_post(secs[slug], data, tag, owner_name="Potenza") for slug, tag, data in seed_posts(today) if slug in secs])
+    if await db.polls.count_documents({}) == 0:
+        await db.polls.insert_one({**seed_poll(today), "created_at": iso_now()})
+    await refresh_kinds()
 
 
 @app.on_event("startup")
@@ -960,7 +1596,8 @@ async def startup():
     await db.votes.create_index([("item_id", 1), ("voter", 1)], unique=True)
     await db.votes.create_index("expires_at", expireAfterSeconds=0)
     await db.saves.create_index([("item_id", 1), ("voter", 1)], unique=True)
-    await db.spotted_reactions.create_index([("spotted_id", 1), ("voter", 1), ("type", 1)], unique=True)
+    await db.post_reactions.create_index([("post_id", 1), ("voter", 1), ("type", 1)], unique=True)
+    await db.poll_votes.create_index([("poll_id", 1), ("voter", 1)], unique=True)
     await db.login_attempts.create_index("identifier")
     await seed_all()
     try:

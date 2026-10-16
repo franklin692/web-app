@@ -21,7 +21,7 @@ api.interceptors.request.use((cfg) => {
 
 export const adminApi = axios.create({ baseURL: `${BACKEND_URL}/api` });
 adminApi.interceptors.request.use((cfg) => {
-  const t = localStorage.getItem("cfp_admin_token");
+  const t = localStorage.getItem("cfp_token");
   if (t) cfg.headers.Authorization = `Bearer ${t}`;
   return cfg;
 });

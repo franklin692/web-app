@@ -7,12 +7,26 @@ import { BottomNav } from "@/components/BottomNav";
 import { AddSheet } from "@/components/AddSheet";
 import Explore from "@/pages/Explore";
 import MapRadar from "@/pages/MapRadar";
-import SpottedPage from "@/pages/SpottedPage";
+import Board from "@/pages/Board";
+import BoardSection from "@/pages/BoardSection";
+import { LoginPrompt } from "@/components/LoginPrompt";
+import { useAuth } from "@/context/AuthContext";
+import { useConfig } from "@/hooks/useConfig";
+import { useEffect } from "react";
 import Profile from "@/pages/Profile";
 import Admin from "@/pages/Admin";
 
 function Shell() {
   const [addOpen, setAddOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const { user } = useAuth();
+  const cfg = useConfig();
+  useEffect(() => { if (cfg?.app_name) document.title = cfg.app_name; }, [cfg?.app_name]);
+  useEffect(() => {
+    const h = () => setLoginOpen(true);
+    window.addEventListener("cfp-login", h);
+    return () => window.removeEventListener("cfp-login", h);
+  }, []);
   return (
     <div className="min-h-screen bg-[#050507]">
       <div className="app-frame relative mx-auto min-h-screen w-full max-w-md overflow-x-hidden bg-[#0B0B0F] pb-32 text-zinc-100 md:border-x md:border-white/5">
@@ -22,13 +36,16 @@ function Shell() {
             <Route path="/" element={<Explore />} />
             <Route path="/item/:id" element={<Explore />} />
             <Route path="/mappa" element={<MapRadar />} />
-            <Route path="/spotted" element={<SpottedPage />} />
+            <Route path="/bacheca" element={<Board />} />
+            <Route path="/bacheca/:slug" element={<BoardSection />} />
+            <Route path="/spotted" element={<Navigate to="/bacheca/spotted" replace />} />
             <Route path="/profilo" element={<Profile />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
-        <BottomNav onPlus={() => setAddOpen(true)} />
+        <BottomNav onPlus={() => (user ? setAddOpen(true) : setLoginOpen(true))} />
+        <LoginPrompt open={loginOpen} onOpenChange={setLoginOpen} />
         <AddSheet open={addOpen} onOpenChange={setAddOpen} />
       </div>
     </div>

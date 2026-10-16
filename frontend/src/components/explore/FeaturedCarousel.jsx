@@ -4,12 +4,12 @@ import { whenLabel } from "@/lib/meta";
 import { KindPill } from "@/components/ItemCard";
 import { TrendBadge } from "@/components/TrendBadge";
 
-export const FeaturedCarousel = ({ items, onOpen }) => {
+export const FeaturedCarousel = ({ items, onOpen, title }) => {
   if (!items?.length) return null;
   return (
     <section data-testid="featured-section" className="mt-7">
       <h2 className="mb-3 flex items-center gap-2 px-5 font-display text-lg font-bold tracking-tight">
-        <Sparkles className="h-5 w-5 text-pink-400" /> In Evidenza stasera
+        <Sparkles className="h-5 w-5 text-pink-400" /> {title}
       </h2>
       <div className="no-scrollbar flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-2">
         {items.map((it) => (

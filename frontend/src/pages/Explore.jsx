@@ -1,34 +1,49 @@
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Search, X, Loader2 } from "lucide-react";
-import { api } from "@/lib/api";
-import { KINDS } from "@/lib/meta";
+import { api, imgUrl } from "@/lib/api";
+import { useConfig } from "@/hooks/useConfig";
 import { ItemCard } from "@/components/ItemCard";
 import { FeaturedCarousel } from "@/components/explore/FeaturedCarousel";
 import { TrendingList } from "@/components/explore/TrendingList";
+import { PollCard } from "@/components/explore/PollCard";
+import { AlertBar, BoardShortcuts } from "@/components/explore/HomeBlocks";
+import { BannerSlot, BannerCard, useBanners } from "@/components/Banner";
 import { ItemDetailSheet } from "@/components/ItemDetailSheet";
 
-const TIMES = [{ id: "tonight", label: "Stasera" }, { id: "weekend", label: "Questo Weekend" }, { id: "all", label: "Tutti" }];
-const CATS = [{ id: "", label: "Tutto" }, ...Object.entries(KINDS).map(([id, k]) => ({ id, label: k.plural }))];
-
-const Header = () => {
+const Header = ({ cfg }) => {
   const today = new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
   return (
     <header className="relative overflow-hidden px-5 pb-2 pt-8">
       <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-violet-600/25 blur-3xl" />
       <div className="pointer-events-none absolute -right-16 top-0 h-48 w-48 rounded-full bg-pink-600/20 blur-3xl" />
-      <p className="relative text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400">{today}</p>
-      <h1 className="relative mt-1 font-display text-4xl font-black leading-[0.95] tracking-tight">
-        Cosa fare a<br /><span className="text-gradient">Potenza</span>
+      <div className="relative flex items-center gap-2">
+        {cfg?.logo_url && <img src={imgUrl(cfg.logo_url)} alt="" className="h-7 w-7 rounded-lg object-cover" />}
+        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400">{today}</p>
+      </div>
+      <h1 data-testid="home-title" className="relative mt-1 font-display text-4xl font-black leading-[0.95] tracking-tight">
+        {cfg?.home.title}<br /><span className="text-gradient">{cfg?.home.subtitle}</span>
       </h1>
     </header>
   );
 };
 
+const ItemsList = ({ items, onOpen }) => {
+  const ads = useBanners("list");
+  const n = Math.max(2, Number(ads[0]?.every_n) || 5);
+  return items.map((it, i) => (
+    <Fragment key={it.id}>
+      <ItemCard item={it} onOpen={onOpen} index={i} />
+      {ads.length > 0 && (i + 1) % n === 0 && <BannerCard compact b={ads[((i + 1) / n - 1) % ads.length]} />}
+    </Fragment>
+  ));
+};
+
 export default function Explore() {
   const { id } = useParams();
   const nav = useNavigate();
+  const cfg = useConfig();
   const [q, setQ] = useState("");
   const [dq, setDq] = useState("");
   const [when, setWhen] = useState("tonight");
@@ -39,10 +54,38 @@ export default function Explore() {
   const list = useQuery({ queryKey: ["items", kind, when, dq], queryFn: async () => (await api.get("/items", { params: { kind, when, q: dq } })).data });
   const open = (iid) => nav(`/item/${iid}`);
   const showTop = !dq && !kind;
+  const tl = cfg?.home.time_labels || {};
+  const cats = [{ slug: "", plural: "Tutto" }, ...(cfg?.categories || [])];
+  const blocks = (cfg?.home.blocks || []).filter((b) => b.enabled && (showTop || b.id === "list"));
+
+  const render = (b) => {
+    switch (b.id) {
+      case "alert": return <AlertBar key={b.id} alert={cfg.home.alert} />;
+      case "poll": return <PollCard key={b.id} title={b.label} />;
+      case "banner": return <BannerSlot key={b.id} position="home_top" className="mx-5 mt-7" />;
+      case "featured": return <FeaturedCarousel key={b.id} title={b.label} items={home.data?.featured} onOpen={open} />;
+      case "trending": return <TrendingList key={b.id} title={b.label} items={home.data?.trending} onOpen={open} />;
+      case "board": return <BoardShortcuts key={b.id} title={b.label} sections={cfg.sections} />;
+      case "list":
+        return (
+          <section key={b.id} className="mt-8 px-5">
+            {showTop && <BannerSlot position="home_mid" className="mb-6" />}
+            <h2 className="mb-3 font-display text-lg font-bold tracking-tight">
+              {dq ? `Risultati per “${dq}”` : kind ? cfg.categories.find((c) => c.slug === kind)?.plural : b.label}
+              {list.data && <span className="ml-2 text-sm font-medium text-zinc-500">{list.data.length}</span>}
+            </h2>
+            {list.isLoading && <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>}
+            {list.data?.length === 0 && <p data-testid="items-empty" className="rounded-2xl border border-dashed border-white/10 py-10 text-center text-sm text-zinc-500">Niente qui per ora. Aggiungilo tu con il tasto +</p>}
+            <div data-testid="items-list" className="flex flex-col gap-3">{list.data && <ItemsList items={list.data} onOpen={open} />}</div>
+          </section>
+        );
+      default: return null;
+    }
+  };
 
   return (
     <div data-testid="explore-page">
-      <Header />
+      <Header cfg={cfg} />
       <div className="sticky top-0 z-30 border-b border-white/5 bg-[#0B0B0F]/85 px-5 pb-3 pt-3 backdrop-blur-xl">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
@@ -51,33 +94,19 @@ export default function Explore() {
           {q && <button data-testid="search-clear" onClick={() => setQ("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400"><X className="h-4 w-4" /></button>}
         </div>
         <div className="mt-3 flex rounded-2xl bg-[#16161F] p-1">
-          {TIMES.map((t) => (
-            <button key={t.id} data-testid={`time-filter-${t.id}`} onClick={() => setWhen(t.id)}
-              className={`flex-1 rounded-xl py-2 text-xs font-bold transition-all ${when === t.id ? "bg-gradient-to-r from-violet-600 to-pink-600 text-white shadow-lg" : "text-zinc-400"}`}>{t.label}</button>
+          {["tonight", "weekend", "all"].map((t) => (
+            <button key={t} data-testid={`time-filter-${t}`} onClick={() => setWhen(t)}
+              className={`flex-1 rounded-xl py-2 text-xs font-bold transition-all ${when === t ? "bg-gradient-to-r from-violet-600 to-pink-600 text-white shadow-lg" : "text-zinc-400"}`}>{tl[t]}</button>
           ))}
         </div>
         <div className="no-scrollbar -mx-5 mt-3 flex gap-2 overflow-x-auto px-5">
-          {CATS.map((c) => (
-            <button key={c.id || "all"} data-testid={`category-filter-${c.id || "all"}`} onClick={() => setKind(c.id)}
-              className={`shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${kind === c.id ? "border-violet-400 bg-violet-500/20 text-white" : "border-white/10 bg-white/[0.03] text-zinc-400 hover:text-white"}`}>{c.label}</button>
+          {cats.map((c) => (
+            <button key={c.slug || "all"} data-testid={`category-filter-${c.slug || "all"}`} onClick={() => setKind(c.slug)}
+              className={`shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${kind === c.slug ? "border-violet-400 bg-violet-500/20 text-white" : "border-white/10 bg-white/[0.03] text-zinc-400 hover:text-white"}`}>{c.plural}</button>
           ))}
         </div>
       </div>
-
-      {showTop && <FeaturedCarousel items={home.data?.featured} onOpen={open} />}
-      {showTop && <TrendingList items={home.data?.trending} onOpen={open} />}
-
-      <section className="mt-8 px-5">
-        <h2 className="mb-3 font-display text-lg font-bold tracking-tight">
-          {dq ? `Risultati per “${dq}”` : kind ? KINDS[kind].plural : "Tutto a Potenza"}
-          {list.data && <span className="ml-2 text-sm font-medium text-zinc-500">{list.data.length}</span>}
-        </h2>
-        {list.isLoading && <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>}
-        {list.data?.length === 0 && <p data-testid="items-empty" className="rounded-2xl border border-dashed border-white/10 py-10 text-center text-sm text-zinc-500">Niente qui per ora. Aggiungilo tu con il tasto +</p>}
-        <div data-testid="items-list" className="flex flex-col gap-3">
-          {list.data?.map((it, i) => <ItemCard key={it.id} item={it} onOpen={open} index={i} />)}
-        </div>
-      </section>
+      {cfg && blocks.map(render)}
       <ItemDetailSheet id={id} onClose={() => nav("/")} />
     </div>
   );

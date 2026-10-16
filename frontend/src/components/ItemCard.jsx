@@ -1,15 +1,16 @@
 import { MapPin, Clock, Star } from "lucide-react";
-import { KINDS, whenLabel } from "@/lib/meta";
+import { whenLabel } from "@/lib/meta";
+import { useCats } from "@/hooks/useConfig";
+import { DynIcon } from "@/lib/icons";
 import { imgUrl } from "@/lib/api";
 import { TrendBadge } from "@/components/TrendBadge";
 
 export const KindPill = ({ kind }) => {
-  const k = KINDS[kind];
+  const k = useCats()[kind];
   if (!k) return null;
-  const Icon = k.icon;
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${k.bg} ${k.color} ${k.ring}`}>
-      <Icon className="h-3 w-3" /> {k.label}
+    <span style={{ color: k.color, background: `${k.color}22`, borderColor: `${k.color}55` }} className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+      <DynIcon name={k.icon} className="h-3 w-3" /> {k.name}
     </span>
   );
 };

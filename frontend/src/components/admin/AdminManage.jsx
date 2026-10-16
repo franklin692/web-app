@@ -2,12 +2,14 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Star, Pencil, Trash2, Flame, RotateCcw, Plus } from "lucide-react";
 import { adminApi, imgUrl } from "@/lib/api";
-import { KINDS, STATUS } from "@/lib/meta";
+import { STATUS } from "@/lib/meta";
+import { useCats } from "@/hooks/useConfig";
 import { TrendBadge } from "@/components/TrendBadge";
-import { IconBtn, useAdminAction } from "@/components/admin/AdminQueue";
+import { IconBtn, useAdminAction } from "@/components/admin/ui";
 
 const ItemRow = ({ d, onEdit }) => {
   const act = useAdminAction();
+  const cats = useCats();
   const url = `/admin/items/${d.id}`;
   const boost = (amount) => act(() => adminApi.post(`${url}/boost`, { amount }), amount ? `Boost +${amount} 🔥` : "Boost azzerato");
   return (
@@ -16,7 +18,7 @@ const ItemRow = ({ d, onEdit }) => {
         <img src={imgUrl(d.image_url)} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{KINDS[d.kind]?.label}</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{cats[d.kind]?.name || d.kind}</span>
             <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${STATUS[d.status]?.cls}`}>{STATUS[d.status]?.label}</span>
             {d.expired && <span className="text-[9px] font-bold text-zinc-500">SCADUTO</span>}
           </div>
@@ -43,14 +45,15 @@ const ItemRow = ({ d, onEdit }) => {
 export const AdminManage = ({ onEdit }) => {
   const [kind, setKind] = useState("");
   const [status, setStatus] = useState("approved");
+  const cats = useCats();
   const { data } = useQuery({ queryKey: ["admin", "items", kind, status], queryFn: async () => (await adminApi.get("/admin/items", { params: { kind, status } })).data });
   return (
     <div className="flex flex-col gap-3">
-      <button data-testid="admin-new-button" onClick={() => onEdit({ mode: "new" })} className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-violet-500/50 bg-violet-500/10 py-3 text-sm font-bold text-violet-200">
+      <button data-testid="admin-new-button" onClick={() => onEdit({ mode: "new", only: "item" })} className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-violet-500/50 bg-violet-500/10 py-3 text-sm font-bold text-violet-200">
         <Plus className="h-4 w-4" /> Inserimento diretto (pubblica subito)
       </button>
       <div className="no-scrollbar flex gap-2 overflow-x-auto">
-        {[["", "Tutti"], ...Object.entries(KINDS).map(([k, v]) => [k, v.plural])].map(([k, l]) => (
+        {[["", "Tutti"], ...Object.values(cats).map((c) => [c.slug, c.plural])].map(([k, l]) => (
           <button key={k || "all"} data-testid={`admin-kind-${k || "all"}`} onClick={() => setKind(k)} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold ${kind === k ? "border-violet-400 bg-violet-500/20 text-white" : "border-white/10 text-zinc-400"}`}>{l}</button>
         ))}
       </div>

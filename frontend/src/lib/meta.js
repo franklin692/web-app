@@ -49,6 +49,7 @@ export const STATUS = {
   approved: { label: "Approvato", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-400/30" },
   rejected: { label: "Rifiutato", cls: "bg-red-500/15 text-red-300 border-red-400/30" },
 };
+export const LISTING_STATUS = { ...STATUS, completato: { label: "Completato", cls: "bg-sky-500/15 text-sky-300 border-sky-400/30" }, scaduto: { label: "Scaduto", cls: "bg-zinc-500/15 text-zinc-400 border-zinc-400/30" } };
 
 export const EMPTY_ITEM = { title: "", category: "", town: "Potenza", zone: "", description: "", image_url: "", instagram: "", info_link: "", address: "", opening_hours: "", start_date: "", start_time: "", end_time: "", price: "" };
 export const EMPTY_SPOTTED = { where: "", when: "", who: "", message: "", tag: "altro" };

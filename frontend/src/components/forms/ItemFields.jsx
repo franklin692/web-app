@@ -1,25 +1,27 @@
-import { CATEGORIES, TOWNS, ZONES } from "@/lib/meta";
+import { useConfig } from "@/hooks/useConfig";
 import { Field, Select, inputCls } from "@/components/forms/Field";
 import { ImageInput } from "@/components/forms/ImageInput";
 
 export const ItemFields = ({ kind, value, onChange }) => {
   const set = (k) => (e) => onChange({ [k]: e?.target ? e.target.value : e });
-  const isEvent = kind === "event";
+  const cfg = useConfig();
+  const cat = cfg?.categories.find((c) => c.slug === kind) || {};
+  const isEvent = !!cat.dated;
   return (
     <div className="flex flex-col gap-4">
       <Field label="Titolo *">
         <input data-testid="field-title" className={inputCls} value={value.title} onChange={set("title")} placeholder={isEvent ? "Es. Serata Reggaeton al Centro" : "Es. Birreria del Corso"} />
       </Field>
       <Field label="Categoria">
-        <Select testId="field-category" value={value.category} onChange={set("category")} options={CATEGORIES[kind] || []} placeholder="Scegli…" />
+        <Select testId="field-category" value={value.category} onChange={set("category")} options={cat.subcategories || []} placeholder="Scegli…" />
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Comune">
-          <Select testId="field-town" value={value.town} onChange={set("town")} options={TOWNS} />
+          <Select testId="field-town" value={value.town} onChange={set("town")} options={(cfg?.towns || []).map((t) => t.name)} />
         </Field>
         <Field label="Zona">
           <input data-testid="field-zone" list="zones-list" className={inputCls} value={value.zone} onChange={set("zone")} placeholder="Es. Centro Storico" />
-          <datalist id="zones-list">{ZONES.map((z) => <option key={z} value={z} />)}</datalist>
+          <datalist id="zones-list">{(cfg?.zones || []).map((z) => <option key={z} value={z} />)}</datalist>
         </Field>
       </div>
       {isEvent && (
@@ -36,7 +38,7 @@ export const ItemFields = ({ kind, value, onChange }) => {
       <Field label={isEvent ? "Locale / Indirizzo" : "Indirizzo"}>
         <input data-testid="field-address" className={inputCls} value={value.address} onChange={set("address")} placeholder="Es. Via Pretoria 12" />
       </Field>
-      {!isEvent && kind !== "place" && (
+      {!isEvent && (
         <Field label={kind === "activity" ? "Quando / Orari" : "Orari di apertura"}>
           <input data-testid="field-opening-hours" className={inputCls} value={value.opening_hours} onChange={set("opening_hours")} placeholder="Es. Mar–Dom 18:00 – 02:00" />
         </Field>

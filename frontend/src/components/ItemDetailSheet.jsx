@@ -7,6 +7,11 @@ import { shareLink } from "@/lib/share";
 import { Sheet } from "@/components/Sheet";
 import { KindPill } from "@/components/ItemCard";
 import { TrendBadge } from "@/components/TrendBadge";
+import { ReportSheet } from "@/components/board/ReplySheets";
+import { useConfig, askLogin } from "@/hooks/useConfig";
+import { useAuth } from "@/context/AuthContext";
+import { useState } from "react";
+import { Flag } from "lucide-react";
 
 const Row = ({ icon: Icon, children }) => (
   <div className="flex items-start gap-3 text-sm text-zinc-300">
@@ -32,6 +37,9 @@ const VoteBtn = ({ active, onClick, label, sub, testId, hot }) => (
 
 export const ItemDetailSheet = ({ id, onClose }) => {
   const qc = useQueryClient();
+  const cfg = useConfig();
+  const { user } = useAuth();
+  const [report, setReport] = useState(null);
   const { data: it, isLoading, isError } = useQuery({ queryKey: ["item", id], queryFn: async () => (await api.get(`/items/${id}`)).data, enabled: !!id });
   const refresh = (data) => {
     qc.setQueryData(["item", id], data);
@@ -64,8 +72,8 @@ export const ItemDetailSheet = ({ id, onClose }) => {
             </div>
           </div>
           <div className="flex gap-3">
-            <VoteBtn testId="vote-going-button" active={it.my_vote === "going"} onClick={() => vote.mutate("going")} label="Ci sarò stasera 👋" sub="Vale fino a fine serata" />
-            <VoteBtn testId="vote-here-button" hot active={it.my_vote === "here"} onClick={() => vote.mutate("here")} label="Ci sono ORA 📍" sub="Vale per 4 ore" />
+            <VoteBtn testId="vote-going-button" active={it.my_vote === "going"} onClick={() => vote.mutate("going")} label={cfg?.texts.going_label} sub="Vale fino a fine serata" />
+            <VoteBtn testId="vote-here-button" hot active={it.my_vote === "here"} onClick={() => vote.mutate("here")} label={cfg?.texts.here_label} sub="Vale per 4 ore" />
           </div>
           <div className="flex gap-3">
             <button data-testid="save-item-button" onClick={() => save.mutate()} className={`flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${it.saved ? "border-amber-400/40 bg-amber-400/15 text-amber-200" : "border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"}`}>
@@ -84,10 +92,12 @@ export const ItemDetailSheet = ({ id, onClose }) => {
           {it.description && <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-300">{it.description}</p>}
           <div className="flex flex-wrap gap-2">
             {it.instagram && <a data-testid="item-instagram-link" href={it.instagram} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-pink-500/30 bg-pink-500/10 px-4 py-2 text-xs font-semibold text-pink-200"><Instagram className="h-4 w-4" /> Instagram</a>}
+            <button data-testid="report-item-button" onClick={() => (user ? setReport({ type: "item", id: it.id, title: it.title }) : askLogin())} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-zinc-400"><Flag className="h-4 w-4" /> Segnala</button>
             {it.info_link && <a data-testid="item-info-link" href={it.info_link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-zinc-200"><Link2 className="h-4 w-4" /> Info</a>}
           </div>
         </div>
       )}
+      <ReportSheet target={report} onClose={() => setReport(null)} />
     </Sheet>
   );
 };

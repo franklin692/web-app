@@ -4,7 +4,8 @@ import { toast } from "sonner";
 import { api, imgUrl, errMsg } from "@/lib/api";
 import { inputCls, Field } from "@/components/forms/Field";
 
-export const ImageInput = ({ value, onChange }) => {
+export const ImageInput = ({ value, onChange, bare, label = "Foto / Locandina" }) => {
+  const Wrap = bare ? "div" : Field;
   const ref = useRef(null);
   const [busy, setBusy] = useState(false);
   const upload = async (file) => {
@@ -23,7 +24,7 @@ export const ImageInput = ({ value, onChange }) => {
     }
   };
   return (
-    <Field label="Foto / Locandina">
+    <Wrap {...(bare ? {} : { label })}>
       {value ? (
         <div className="relative overflow-hidden rounded-xl border border-white/10">
           <img data-testid="image-preview" src={imgUrl(value)} alt="anteprima" className="h-40 w-full object-cover" />
@@ -38,6 +39,6 @@ export const ImageInput = ({ value, onChange }) => {
         </div>
       )}
       <input ref={ref} type="file" accept="image/*" hidden data-testid="image-file-input" onChange={(e) => upload(e.target.files?.[0])} />
-    </Field>
+    </Wrap>
   );
 };

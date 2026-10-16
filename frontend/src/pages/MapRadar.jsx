@@ -1,4 +1,5 @@
 import { Radar } from "lucide-react";
+import { useConfig } from "@/hooks/useConfig";
 
 const SPOTS = [
   { top: "32%", left: "38%", c: "bg-orange-400", label: "Via Pretoria" },
@@ -8,6 +9,7 @@ const SPOTS = [
 ];
 
 export default function MapRadar() {
+  const cfg = useConfig();
   return (
     <div data-testid="map-page" className="flex min-h-[85vh] flex-col items-center justify-center px-6 text-center">
       <div className="relative h-72 w-72">
@@ -24,7 +26,7 @@ export default function MapRadar() {
       </div>
       <p className="mt-10 text-xs font-bold uppercase tracking-[0.3em] text-orange-300">In arrivo</p>
       <h1 className="mt-2 font-display text-3xl font-black tracking-tight">Mappa Radar <span className="text-gradient">Live</span></h1>
-      <p className="mt-3 max-w-xs text-sm text-zinc-400">Presto vedrai su una mappa scura di Potenza e provincia dove si accende la serata, con le fiamme sui posti più frequentati.</p>
+      <p className="mt-3 max-w-xs text-sm text-zinc-400">{cfg?.texts.radar_text}</p>
     </div>
   );
 }
