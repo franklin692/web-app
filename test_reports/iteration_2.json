@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 2 (v2 rework) full-stack test. Backend: new pytest suite test_v2_api.py (21 tests) covering config/permissions, bacheca CRUD/tags/search/reactions/replies/inbox/unread, owner lifecycle (edit->pending, complete toggle, delete, reject reason, Passaggi past-date expiry), reports hide/block/ignore + blocked user 403, poll (hidden pct, 409 double vote, close), struct categories/sections (create, submit with new kind, reorder, hide, delete 409 without move_to), config PUT (home title, alert bar, threshold -> display_count, 422 out-of-range), banners (section:case, views/clicks, inactive hidden), users (promote/demote, reset password, change password/email), audit, backup (no password_hash) + restore (admin and user logins still work). 20/21 pass. Frontend (390x844): Home blocks, poll vote -> percentages, Bacheca tiles, Case section with tag filter + partner badge + sponsor banners, guest + / reply -> 'Accedi per continuare', registration, Passaggio published immediately, Spotted pending, 2nd user reply ('Ci sto!' label), reaction, unread badge on Profilo nav, inbox message, mark Completato/Riattiva hides/shows post, admin login -> 16 tabs for superadmin / 7 tabs for promoted admin, reject with reason via prompt, report via UI + ignore in Segnalazioni, banner create -> visible on /bacheca/case, Home title edit -> visible on Explore, section create + field add -> visible in Bacheca and + picker, Statistiche. All passed. All test data cleaned; Home title restored to 'Cosa fare a'/'Potenza', threshold 20, only 'Supreme House Immobiliare' banner remains, admin password untouched.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/struct/sections", "issue": "If body.fields contains a field without 'key' (only label), it is stored as-is (key auto-generation exists only in PUT). Subsequent POST /api/board/{slug}/posts crashes with 500 KeyError: 'key' in clean_post. UI currently creates with name only so not reachable from UI, but API is fragile. Fix: apply the same key slugify in struct_create (and use f.get('key') defensively)."},
+      {"endpoint": "DELETE /api/admin/users/{uid}", "issue": "Deleting a user leaves their posts/items public (orphan owner_user); /me/delete removes posts but admin delete does not. Consider deleting or reassigning user content and replies."},
+      {"endpoint": "POST /api/poll/{id}/vote", "issue": "Voter key is u:<id> when logged in and d:<device> as guest, so the same person can vote once as guest and again after logging in (seen in UI: poll shows options again after login). Spec: one vote per device/account - consider checking both device and user."},
+      {"endpoint": "PUT /api/admin/posts/{pid}", "issue": "Admin edit does not recompute expires_at (e.g. changing Passaggi date keeps old expiry), unlike owner edit."},
+      {"endpoint": "PUT /api/admin/config", "issue": "Non-numeric trend.threshold -> int() ValueError -> 500 instead of 422."},
+      {"endpoint": "CORS", "issue": "allow_origins='*' with allow_credentials=True reflects any Origin (https://evil.com) with credentials=true. Low risk since auth is Bearer/localStorage (no cookies), but set explicit origins."},
+      {"endpoint": "seed_admin", "issue": "Does not update existing admin password if ADMIN_PASSWORD env changes (only role/blocked) - playbook item 5."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BannerCard (no image)", "issue": "When a banner has no image, the 'SPONSORIZZATO' badge overlaps the banner title text (title unreadable) on /bacheca/case.", "selector": "[data-testid^='banner-']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Login -> unread badge", "issue": "After login the app lands on /profilo with Messaggi tab default, which immediately calls /me/inbox/read, so the user never sees the unread badge on login (badge works correctly when logged in on other pages).", "affected_selectors": ["[data-testid='unread-badge']", "[data-testid='profile-tab-inbox']"]}
+    ],
+    "design_issues": [
+      {"screen": "Bacheca tiles", "issues": ["Pluralization: '1 annunci' should be '1 annuncio'"]},
+      {"screen": "Home", "issues": ["home-title renders empty briefly while /api/config loads (no skeleton)"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_v2_api.py", "/app/test_reports/pytest/pytest_v2.xml"],
+  "action_items": [
+    "Slugify/auto-generate field keys in struct_create for sections (prevents 500 on post create)",
+    "Fix banner card without image: SPONSORIZZATO badge overlapping title",
+    "Admin delete user: remove/reassign their posts/items/replies",
+    "Poll one-vote-per-device/account: dedupe across guest device and logged-in account",
+    "Optional: don't auto-mark inbox read right after login, or keep badge visible until user opens Messaggi explicitly",
+    "Minor: '1 annuncio' pluralization, 422 for non-numeric threshold, recompute expires_at on admin post edit, explicit CORS origins"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1622 lines - split into routers (board, admin, struct, polls, banners, auth)",
+    "get_banners increments views on every GET (including admin previews/refetches) - inflates stats",
+    "POST /reports doesn't dedupe repeated reports from the same user on the same target",
+    "Users can reply to their own posts (no owner check in post_reply)",
+    "/app/memory/test_credentials.md is outdated: still documents removed Admin PIN and role 'admin' instead of 'superadmin'"
+  ],
+  "updated_files": ["/app/backend/tests/test_v2_api.py"],
+  "success_rate": {"backend": "95% (20/21)", "frontend": "100% of tested flows (1 medium UI overlap bug)"},
+  "test_credentials": "admin/admin123 (superadmin). test_credentials.md outdated (mentions PIN).",
+  "seed_data_creation": "None persisted. All TEST_ users/posts/banners/sections/categories/items/polls deleted after run; config restored.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app && REACT_APP_BACKEND_URL=... python -m pytest backend/tests/test_v2_api.py -n 0 (pytest.ini enables xdist; must use -n 0 because the suite uses a shared module fixture and a backup/restore test). test_cosafare_api.py is obsolete (v1). Only failing test: TestStruct::test_section_fields_without_key (500 KeyError). Login lockout key is IP:identifier, 5 fails -> 429 for 15 min."
+}

@@ -25,7 +25,7 @@ export const SectionTile = ({ s, big }) => (
     <div>
       <p className="font-display text-[15px] font-bold leading-tight text-white">{s.name}</p>
       {big && s.description && <p className="mt-1 line-clamp-2 text-[11px] text-zinc-300">{s.description}</p>}
-      <p className="mt-1 text-[11px] font-semibold text-zinc-400">{s.count} annunci</p>
+      <p className="mt-1 text-[11px] font-semibold text-zinc-400">{s.count} {s.count === 1 ? "annuncio" : "annunci"}</p>
     </div>
   </Link>
 );

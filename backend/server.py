@@ -664,8 +664,13 @@ async def admin_get_config(a=Depends(require_super)):
 @api.put("/admin/config")
 async def admin_put_config(body: dict, a=Depends(require_super)):
     upd = {k: v for k, v in body.items() if k in CONFIG_KEYS}
-    if "trend" in upd and not 1 <= int(upd["trend"].get("threshold", 20)) <= 1000:
-        raise HTTPException(422, "La soglia deve essere tra 1 e 1000")
+    if "trend" in upd:
+        try:
+            ok = 1 <= int(upd["trend"].get("threshold", 20)) <= 1000 and int(upd["trend"].get("going_hours", 12)) > 0 and int(upd["trend"].get("here_hours", 4)) > 0
+        except (TypeError, ValueError):
+            ok = False
+        if not ok:
+            raise HTTPException(422, "Soglia (1–1000) e durate devono essere numeri validi")
     await db.config.update_one({"_id": "app"}, {"$set": upd}, upsert=True)
     await audit(a, "config", ", ".join(upd))
     return await admin_get_config(a)
@@ -708,6 +713,8 @@ async def struct_create(coll: str, body: dict, a=Depends(require_super)):
                  {"key": "description", "label": "Descrizione", "type": "textarea", "required": False, "options": []}], "tags": [], "reply_label": "Rispondi",
                  "requires_approval": True, "duration_days": 30, "reactions": True, "partner_name": "", "partner_logo": "", "expiry_field": ""})
     doc = {**defaults, **data, "slug": slug, "order": await db[coll].count_documents({})}
+    for f in doc.get("fields", []) if coll == "sections" else []:
+        f["key"] = f.get("key") or slugify(f.get("label", "campo")).replace("-", "_")
     res = await db[coll].insert_one(doc)
     await refresh_kinds()
     await audit(a, f"crea {coll}", data["name"])
@@ -785,6 +792,8 @@ def title_of(sec, data):
 def clean_post(sec, data, tag, old=None):
     out = dict(old or {})
     for f in sec.get("fields", []):
+        if not f.get("key"):
+            continue
         v = data.get(f["key"], "")
         v = "" if v is None else str(v).strip()[:2000]
         if f.get("required") and not v:
@@ -879,6 +888,8 @@ async def post_react(pid: str, body: ReactIn, request: Request):
 @api.post("/posts/{pid}/reply")
 async def post_reply(pid: str, body: ReplyIn, user: User = Depends(require_member)):
     d = await public_post(pid)
+    if d.get("owner_user") == user.id:
+        raise HTTPException(400, "Non puoi rispondere al tuo annuncio")
     await db.post_replies.insert_one({"post_id": pid, "post_title": d["title"], "section": d["section"], "owner_user": d.get("owner_user"),
                                       "from_user": user.id, "from_name": user.username, "message": body.message.strip(),
                                       "contact": body.contact.strip(), "read": False, "created_at": iso_now()})
@@ -899,6 +910,8 @@ async def report(body: ReportIn, user: User = Depends(require_member)):
     t = await coll.find_one({"_id": oid(body.target_id)})
     if not t:
         raise HTTPException(404, "Contenuto non trovato")
+    if await db.reports.find_one({"target_id": body.target_id, "by_user": user.username, "status": "open"}):
+        return {"ok": True}
     await db.reports.insert_one({"target_type": body.target_type, "target_id": body.target_id, "title": t.get("title", ""), "reason": body.reason,
                                  "by_user": user.username, "status": "open", "created_at": iso_now()})
     return {"ok": True}
@@ -932,20 +945,30 @@ async def get_poll(request: Request):
     p = await db.polls.find_one({"status": "open", "start_date": {"$lte": today_rome()}}, sort=[("start_date", -1), ("created_at", -1)])
     if not p:
         return None
-    ident = await get_identity(request)
-    v = await db.poll_votes.find_one({"poll_id": str(p["_id"]), "voter": ident["voter"]}) if ident["voter"] else None
+    keys = await poll_keys(request)
+    v = await db.poll_votes.find_one({"poll_id": str(p["_id"]), "voter": {"$in": keys}}) if keys else None
     return poll_out(p, v["option"] if v else None, show=bool(v))
+
+
+async def poll_keys(request: Request):
+    ident = await get_identity(request)
+    dev = re.sub(r"[^a-zA-Z0-9\-]", "", request.headers.get("X-Device-Id", ""))[:64]
+    return [k for k in {ident["voter"], f"d:{dev}" if dev else None} if k]
 
 
 @api.post("/poll/{pid}/vote")
 async def vote_poll(pid: str, body: PollVoteIn, request: Request):
-    voter = need_voter(await get_identity(request))
+    keys = await poll_keys(request)
+    if not keys:
+        raise HTTPException(400, "Dispositivo non riconosciuto")
     p = await db.polls.find_one({"_id": oid(pid), "status": "open"})
     if not p or not 0 <= body.option < len(p["options"]):
         raise HTTPException(404, "Sondaggio non disponibile")
+    if await db.poll_votes.find_one({"poll_id": pid, "voter": {"$in": keys}}):
+        raise HTTPException(409, "Hai già votato")
     try:
-        await db.poll_votes.insert_one({"poll_id": pid, "voter": voter, "option": body.option})
-    except DuplicateKeyError:
+        await db.poll_votes.insert_many([{"poll_id": pid, "voter": k, "option": body.option} for k in keys], ordered=False)
+    except Exception:
         raise HTTPException(409, "Hai già votato")
     await db.polls.update_one({"_id": p["_id"]}, {"$inc": {f"options.{body.option}.votes": 1}})
     return poll_out(await db.polls.find_one({"_id": p["_id"]}), body.option)
@@ -1134,6 +1157,7 @@ async def delete_account(body: ConfirmIn, user: User = Depends(require_user)):
         raise HTTPException(403, "Il Super Admin non può eliminarsi")
     await db.users.delete_one({"_id": ObjectId(user.id)})
     await db.posts.delete_many({"owner_user": user.id})
+    await db.post_replies.delete_many({"from_user": user.id})
     return {"ok": True}
 
 
@@ -1368,7 +1392,7 @@ async def admin_update_post(pid: str, body: PostIn, a=Depends(require_admin)):
         raise HTTPException(404, "Annuncio non trovato")
     sec = await get_section(d["section"], public=False)
     data, tag = clean_post(sec, body.data, body.tag, d.get("data"))
-    await db.posts.update_one({"_id": d["_id"]}, {"$set": {"data": data, "tag": tag, "title": title_of(sec, data)}})
+    await db.posts.update_one({"_id": d["_id"]}, {"$set": {"data": data, "tag": tag, "title": title_of(sec, data), "expires_at": post_expiry(sec, data)}})
     await audit(a, "modifica annuncio", title_of(sec, data))
     return {"ok": True}
 
@@ -1470,6 +1494,9 @@ async def admin_delete_user(uid: str, a=Depends(require_super)):
     if not u or u.get("role") == "superadmin":
         raise HTTPException(403, "Utente non eliminabile")
     await db.users.delete_one({"_id": u["_id"]})
+    await db.posts.delete_many({"owner_user": uid})
+    await db.post_replies.delete_many({"from_user": uid})
+    await db.items.update_many({"created_by": f"u:{uid}"}, {"$set": {"created_by": "deleted"}})
     await audit(a, "elimina utente", u["username"])
     return {"ok": True}
 

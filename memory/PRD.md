@@ -1,24 +1,18 @@
 # Cosa Fare a Potenza – PRD
 
 ## Original problem
-Mobile-first PWA social radar for Potenza & province (SOMO/MoVita style): Explore feed, Map Radar, central "+" universal submit (admin approval), Spotted board, Admin panel. Anonymous "Ci sarò"/"Ci sono ORA" votes with trend badges (no low numbers, threshold 20), admin boost, featured carousel, seed data. Approved plan adds: search, Stasera/Weekend/Tutti filters, share, user accounts (Accedi/Profilo with saved, my spotted + private replies, my submissions), guest spotted secret code, admin via admin account or PIN, map = placeholder in Phase 1.
+Mobile-first PWA social radar for Potenza & province (SOMO/MoVita style). v1: Explore, votes "Ci sarò/Ci sono ORA", trend badges, + submit with approval, Spotted, admin panel, seed data.
+v2 (approved plan "Cosa Fare a Potenza 2.0"): Bacheca with configurable sections, private replies tied to accounts (secret code & PIN removed), guest/registered permissions, Sondaggio del Giorno, profile inbox/listings/account, and a Cabina di Regia with Super Admin/Admin roles covering moderation, reports, content, dynamic categories, section builder, zones/towns, Home builder + alert, banners & sponsors with stats, texts & rules, users & roles, audit log, backup/restore.
 
 ## Architecture
-- Backend: FastAPI single `server.py` + `seed.py`, MongoDB (items, spotted, votes w/ TTL, saves, spotted_reactions, spotted_replies, users, settings, login_attempts, files). Bearer JWT (localStorage), guest identity via X-Device-Id. Emergent Object Storage for image uploads (/api/upload, /api/files/*).
-- Frontend: React + react-query + vaul bottom sheets, Tailwind, Outfit/Plus Jakarta Sans, dark neon theme. PWA manifest + service worker (network-first, offline shell).
+- Backend: FastAPI `server.py` (+ `seed.py`, `seed2.py` defaults), MongoDB collections: items, categories, sections, posts, post_replies, post_reactions, reports, polls, poll_votes, banners, config (_id "app"), users (role user/admin/superadmin, blocked), votes (TTL), saves, audit, files, login_attempts. Bearer JWT; guests via X-Device-Id. Emergent Object Storage for uploads (login required).
+- Frontend: React + react-query, vaul sheets, Tailwind; public config via `/api/config` (`useConfig`), dynamic icons (`lib/icons.jsx`). PWA manifest + SW.
 
-## Implemented (2026-06)
-- Explore: search, time + category filters, featured carousel, live ranking, list, detail sheet (vote/save/share, deep link /item/:id)
-- Votes: 1 presence per voter/item, switch/cancel, expiry (going: event end or 12h; here: 4h), past events hidden
-- + sheet with 5 types, photo upload/URL, pending submissions, guest spotted code
-- Spotted: tag filters, reactions toggle, private replies, code lookup, share link
-- Auth: register/login (email or username), profile tabs; brute-force lockout (X-Forwarded-For)
-- Admin: queue (approve / edit+approve / reject / delete), direct insert, CRUD, featured, boost +5/+10/+25/reset, spotted mgmt, replies, threshold & PIN settings
-- Seed: 5 places, 3 venues, 4 events, 3 activities, 4 spotted + 3 pending
-- Tested: iteration_1 backend 21/22 (brute-force fixed after), frontend flows pass
+## Implemented
+- 2026-06 v1 MVP (see iteration_1).
+- 2026-06 v2: Bacheca (6 default sections, dynamic fields/tags/reply labels/approval/duration/reactions/partner/expiry), Spotted migrated, login-gated publish/reply/report, poll (hidden results until vote, 1 vote per device+account), profile (Messaggi with unread badge, I miei annunci with edit/complete/delete + reject reason, Salvati, Account), Cabina di Regia (16 tabs super / 7 admin), banners (5 positions, views/clicks), backup export/restore, audit log. Tested iteration_2: backend 20/21 (the failure is fixed), all frontend flows pass. Minor fixes applied afterwards.
 
 ## Backlog
-- P1: Map Radar (Leaflet CartoDB Dark Matter, category pins, flame halo)
-- P1: Merge guest saves/votes into account on login; localized date picker
-- P2: Push notifications, content reporting, password reset via email
-- P3: Venue manager profiles, admin stats, multi-admin roles, promoted slots
+- P1: Mappa Radar (Leaflet dark, pins, flame halo); "Copia-Incolla Magico" AI importer; Roulette "Risolvi-Serata"; Pass Vantaggi
+- P2: Push notifications, venue manager profiles, sponsor online payments, advanced stats, password reset via email
+- Tech: split server.py into routers; explicit CORS origins; drag-and-drop reorder
