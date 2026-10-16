@@ -8,6 +8,7 @@ import { KindPicker, usePickOptions, EntryForm, emptyFor, validateEntry } from "
 import { PrimaryButton } from "@/components/forms/Field";
 import { useAdminAction } from "@/components/admin/ui";
 import { toast } from "sonner";
+import { AiAssistant, AiEntryCard } from "@/components/ai/AiAssistant";
 
 // target: { mode: "new", only?: "item"|"post" } | { mode: "edit", entity: "item"|"post", data, approve? }
 export const AdminEditor = ({ target, onClose }) => {
@@ -17,9 +18,11 @@ export const AdminEditor = ({ target, onClose }) => {
   const [opt, setOpt] = useState(null);
   const [form, setForm] = useState(EMPTY_ITEM);
   const [busy, setBusy] = useState(false);
+  const [ai, setAi] = useState(false);
 
   useEffect(() => {
     if (!target) return;
+    setAi(false);
     if (target.mode === "edit") {
       const d = target.data;
       const o = target.entity === "item" ? options.find((x) => x.id === `cat:${d.kind}`) || { type: "item", slug: d.kind, title: d.kind } : options.find((x) => x.id === `sec:${d.section}`);
@@ -49,7 +52,7 @@ export const AdminEditor = ({ target, onClose }) => {
   return (
     <Sheet open={!!target} onOpenChange={(o) => !o && onClose()} testId="admin-editor-sheet" title={target?.mode === "new" ? (opt ? `Pubblica: ${opt.title}` : "Inserimento diretto") : "Modifica contenuto"} subtitle={target?.mode === "new" ? "Pubblicato subito, senza coda" : null}>
       {!opt ? (
-        target?.mode === "edit" ? <p className="text-sm text-zinc-400">Categoria o sezione nascosta: riattivala per modificare.</p> : <KindPicker options={list} onPick={(o) => { setOpt(o); setForm(emptyFor(o)); }} />
+        target?.mode === "edit" ? <p className="text-sm text-zinc-400">Categoria o sezione nascosta: riattivala per modificare.</p> : ai ? <AiAssistant options={list} onUse={({ opt: o, form: f }) => { setOpt(o); setForm(f); }} /> : <><AiEntryCard onClick={() => setAi(true)} /><KindPicker options={list} onPick={(o) => { setOpt(o); setForm(emptyFor(o)); }} /></>
       ) : (
         <div className="flex flex-col gap-5">
           <EntryForm opt={opt} form={form} setForm={setForm} />

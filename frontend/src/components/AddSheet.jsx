@@ -10,6 +10,7 @@ import { Sheet } from "@/components/Sheet";
 import { ItemFields } from "@/components/forms/ItemFields";
 import { PostFields, missingRequired } from "@/components/board/PostFields";
 import { PrimaryButton } from "@/components/forms/Field";
+import { AiAssistant, AiEntryCard } from "@/components/ai/AiAssistant";
 
 export const usePickOptions = () => {
   const cfg = useConfig();
@@ -56,7 +57,8 @@ export const AddSheet = ({ open, onOpenChange, prefillThemes = [] }) => {
   const [form, setForm] = useState(EMPTY_ITEM);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
-  useEffect(() => { if (!open) setTimeout(() => { setOpt(null); setDone(null); }, 300); }, [open]);
+  const [ai, setAi] = useState(false);
+  useEffect(() => { if (!open) setTimeout(() => { setOpt(null); setDone(null); setAi(false); }, 300); }, [open]);
 
   const cats = Object.fromEntries((cfg?.categories || []).map((c) => [c.slug, c]));
   const submit = async () => {
@@ -75,15 +77,23 @@ export const AddSheet = ({ open, onOpenChange, prefillThemes = [] }) => {
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} testId="add-sheet" title={done ? "Inviato!" : opt ? opt.title : "Aggiungi a Potenza"} subtitle={done ? null : opt ? opt.sub : "Cosa vuoi segnalare alla città?"}>
+    <Sheet open={open} onOpenChange={onOpenChange} testId="add-sheet" title={done ? "Inviato!" : opt ? opt.title : ai ? "Crea con Lucy ✨" : "Aggiungi a Potenza"} subtitle={done ? null : opt ? opt.sub : ai ? "Ti aiuto a pubblicare in pochi secondi" : "Cosa vuoi segnalare alla città?"}>
       {done ? (
         <div data-testid="add-success" className="flex flex-col items-center gap-4 py-6 text-center">
           <CheckCircle2 className="h-16 w-16 text-emerald-400 drop-shadow-[0_0_20px_rgba(52,211,153,0.5)]" />
           <p data-testid="add-success-message" className="text-base text-zinc-200">{done}</p>
           <PrimaryButton data-testid="add-success-close" onClick={() => onOpenChange(false)}>Chiudi</PrimaryButton>
         </div>
+      ) : !opt && ai ? (
+        <div className="flex flex-col gap-3">
+          <button data-testid="ai-back-button" onClick={() => setAi(false)} className="inline-flex w-fit items-center gap-1 text-sm text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /> Scegli a mano</button>
+          <AiAssistant options={options} onUse={({ opt: o, form: f }) => { setOpt(o); setForm(f); toast.success("Bozza caricata: controlla e invia"); }} />
+        </div>
       ) : !opt ? (
+        <>
+        <AiEntryCard onClick={() => setAi(true)} />
         <KindPicker options={options} onPick={(o) => { setOpt(o); setForm(o.type === "item" ? { ...emptyFor(o), themes: prefillThemes } : emptyFor(o)); }} />
+        </>
       ) : (
         <div className="flex flex-col gap-5">
           <button data-testid="add-back-button" onClick={() => setOpt(null)} className="inline-flex w-fit items-center gap-1 text-sm text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /> Cambia tipo</button>

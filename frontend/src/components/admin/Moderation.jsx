@@ -5,6 +5,8 @@ import { adminApi, imgUrl } from "@/lib/api";
 import { timeAgo, STATUS } from "@/lib/meta";
 import { useCats, useSections } from "@/hooks/useConfig";
 import { IconBtn, useAdminAction, askReason, Card } from "@/components/admin/ui";
+import { AiReviewBadge } from "@/components/ai/AiAssistant";
+import { Sparkles } from "lucide-react";
 
 const ModRow = ({ entity, d, onEdit, pending }) => {
   const act = useAdminAction();
@@ -24,10 +26,13 @@ const ModRow = ({ entity, d, onEdit, pending }) => {
           {!pending && <span className={`mt-1 inline-block rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${STATUS[d.status]?.cls}`}>{STATUS[d.status]?.label}{d.reply_count ? ` · ${d.reply_count} risposte` : ""}</span>}
         </div>
       </div>
+      {(pending || d.ai_review?.risk) && <AiReviewBadge review={d.ai_review} testId={`ai-review-${d.id}`} />}
+      {d.ai_held && d.status === "pending" && <p className="mt-1 text-[11px] text-red-300">Messo in attesa automaticamente dall'AI</p>}
       <div className="mt-3 flex flex-wrap gap-2">
         {d.status !== "approved" && <IconBtn testId={`approve-${d.id}`} icon={Check} label="Approva" cls="border-emerald-400/40 bg-emerald-500/15 text-emerald-200" onClick={() => act(() => adminApi.post(`${base}/${d.id}/status`, { status: "approved" }), "Approvato ✅")} />}
         <IconBtn testId={`edit-${d.id}`} icon={Pencil} label={pending ? "Modifica" : ""} cls="border-white/10 bg-white/5 text-zinc-200" onClick={() => onEdit({ mode: "edit", entity, data: d, approve: pending })} />
         {d.status !== "rejected" && <IconBtn testId={`reject-${d.id}`} icon={X} label="Rifiuta" cls="border-red-400/30 bg-red-500/10 text-red-200" onClick={() => { const r = askReason(); if (r !== null) act(() => adminApi.post(`${base}/${d.id}/status`, { status: "rejected", reason: r }), "Rifiutato"); }} />}
+        <IconBtn testId={`ai-analyze-${d.id}`} icon={Sparkles} label="AI" cls="border-violet-400/40 bg-violet-500/10 text-violet-200" onClick={() => act(() => adminApi.post(`/admin/ai/moderate/${entity}/${d.id}`), "Analisi AI aggiornata")} />
         <IconBtn testId={`delete-${d.id}`} icon={Trash2} cls="border-white/10 bg-white/5 text-zinc-400" onClick={() => window.confirm("Eliminare definitivamente?") && act(() => adminApi.delete(`${base}/${d.id}`), "Eliminato")} />
       </div>
     </Card>
