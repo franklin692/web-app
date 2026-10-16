@@ -1,0 +1,28 @@
+.font-display { font-family: "Outfit", sans-serif; }
+.text-gradient { background: linear-gradient(120deg, #8B5CF6 0%, #EC4899 55%, #F97316 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.text-gradient-warm { background: linear-gradient(120deg, #F97316 0%, #EC4899 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+.grain { opacity: 0.05; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.fade-up { animation: fadeUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@keyframes flame { 0%, 100% { transform: scale(1) rotate(-3deg); filter: drop-shadow(0 0 2px #F97316); } 50% { transform: scale(1.18) rotate(3deg); filter: drop-shadow(0 0 8px #F97316); } }
+.flame-pulse { animation: flame 1.4s ease-in-out infinite; }
+
+@keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.live-dot { animation: livePulse 1.6s ease-in-out infinite; }
+
+@keyframes plusGlow { 0%, 100% { box-shadow: 0 0 22px rgba(236, 72, 153, 0.55), 0 0 0 0 rgba(139, 92, 246, 0.4); } 50% { box-shadow: 0 0 34px rgba(139, 92, 246, 0.75), 0 0 0 8px rgba(139, 92, 246, 0); } }
+.plus-glow { animation: plusGlow 2.6s ease-in-out infinite; }
+
+@keyframes radarRing { from { transform: scale(0.3); opacity: 0.9; } to { transform: scale(1.15); opacity: 0; } }
+.radar-ring { animation: radarRing 3s ease-out infinite; }
+@keyframes sweep { to { transform: rotate(360deg); } }
+.radar-sweep { background: conic-gradient(from 0deg, rgba(139, 92, 246, 0.35), transparent 25%); animation: sweep 4s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up, .flame-pulse, .live-dot, .plus-glow, .radar-ring, .radar-sweep { animation: none; }
+}

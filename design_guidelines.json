@@ -1,0 +1,106 @@
+{
+  "project_title": "Cosa Fare a Potenza - Social Radar PWA",
+  "app_context": "Mobile-first PWA social radar and event discovery platform for Potenza, Italy. Inspired by SOMO and MoVita. All UI text in Italian.",
+  "theme": {
+    "mode": "dark",
+    "background": "#0B0B0F",
+    "surface": "#16161F",
+    "surface_glass": "rgba(22, 22, 31, 0.75)",
+    "border_luminous": "rgba(255, 255, 255, 0.12)",
+    "border_accent": "rgba(139, 92, 246, 0.3)"
+  },
+  "colors": {
+    "bg_main": "#0B0B0F",
+    "bg_card": "#16161F",
+    "bg_card_hover": "#1E1E2C",
+    "text_primary": "#F3F4F6",
+    "text_secondary": "#9CA3AF",
+    "text_muted": "#6B7280",
+    "accent_violet": "#8B5CF6",
+    "accent_pink": "#EC4899",
+    "accent_orange": "#F97316",
+    "gradient_hot": "linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%)",
+    "gradient_trend": "linear-gradient(135deg, #F97316 0%, #EC4899 100%)",
+    "gradient_electric": "linear-gradient(135deg, #8B5CF6 0%, #3B82F6 100%)",
+    "glow_button": "0 0 20px rgba(139, 92, 246, 0.5)"
+  },
+  "typography": {
+    "font_family_heading": "Outfit, sans-serif",
+    "font_family_body": "Plus Jakarta Sans, sans-serif",
+    "font_family_mono": "JetBrains Mono, monospace",
+    "h1_hero": "text-3xl font-bold tracking-tight text-white",
+    "h2_section": "text-xl font-bold tracking-tight text-white",
+    "h3_card": "text-lg font-semibold text-white",
+    "body_main": "text-sm leading-relaxed text-gray-300",
+    "caption": "text-xs text-gray-400 font-medium"
+  },
+  "layout_strategy": {
+    "container": "max-w-md mx-auto min-h-screen bg-[#0B0B0F] text-gray-100 relative pb-24 shadow-2xl border-x border-white/5",
+    "header": "sticky top-0 z-40 backdrop-blur-xl bg-[#0B0B0F]/80 border-b border-white/10 px-4 py-3 flex items-center justify-between",
+    "bottom_nav": "fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-40 backdrop-blur-xl bg-[#16161F]/90 border-t border-white/10 px-4 py-2 flex items-center justify-around",
+    "central_plus_button": "relative -top-5 w-14 h-14 rounded-full bg-gradient-to-r from-pink-500 via-purple-500 to-violet-600 p-[2px] shadow-[0_0_25px_rgba(236,72,153,0.5)] active:scale-95 transition-transform"
+  },
+  "key_features_and_views": {
+    "explore_feed": {
+      "search_bar": "Search by venue, event name or hashtag with instant visual filter",
+      "time_filters": ["Stasera", "Weekend", "Tutti"],
+      "category_chips": ["Tutti", "Discoteca", "Aperitivo", "Concerti", "Cultura", "Food & Drink", "Live Music"],
+      "featured_carousel": "In Evidenza Stasera horizontally scrollable cards with neon badge and live attendee counter",
+      "trending_ranking": "Dove va Potenza stasera top 3 ranked spots with live fire index",
+      "event_list": "Glassmorphic event cards with image thumbnail, time, location, distance, trend badge, save icon, and quick vote count"
+    },
+    "detail_sheet": {
+      "type": "Vaul Bottom Sheet / Dialog",
+      "contents": ["Full image header", "Event title, venue name, address, date & time", "Description & organizer", "Live vote counter (Ci sarò / Ci sono ORA)", "Anonymous vote button with optimistic state", "Share to WhatsApp / Copy link button", "Save to Favorites toggle"]
+    },
+    "spotted_board": {
+      "card_format": "Dove, Quando, Chi cerco, Messaggio",
+      "reactions": ["❤️ Love", "👀 Notato", "🔥 Fire"],
+      "private_reply": "Opens bottom-sheet modal to send direct private message/contact info"
+    },
+    "map_radar_tab": {
+      "state": "In Arrivo preview mode",
+      "ui": "Dark stylized radar grid with pulsing wave rings, simulated active spots in Potenza (Piazza Mario Pagano, Via Pretoria, Parco Montereale, Macchia Romana), teaser banner 'Mappa Radar Live in arrivo a Potenza'"
+    },
+    "add_bottom_sheet": {
+      "title": "Aggiungi a Potenza",
+      "options": [
+        {"icon": "CalendarPlus", "label": "Nuovo Evento", "desc": "Segnala una festa, serata o concerto"},
+        {"icon": "Eye", "label": "Spotted", "desc": "Hai visto qualcuno di interessante?"},
+        {"icon": "MapPin", "label": "Segnala Locale", "desc": "Nuovo bar, pub o club in città"},
+        {"icon": "Tag", "label": "Promozione", "desc": "Offerta speciale o aperitivo del giorno"},
+        {"icon": "Camera", "label": "Live Update", "desc": "Com'è la situazione adesso?"}
+      ]
+    },
+    "profile_tab": {
+      "sections": ["Login / Registrazione quick toggle", "I miei Salvati", "I miei Spotted", "Le mie Segnalazioni", "Badge Utente Potentino (es. Night Owl, City Radar Level 3)"]
+    },
+    "admin_panel": {
+      "access": "PIN validation or quick admin toggle (PIN: 1940 or 2026)",
+      "features": ["Pending Approval Queue (Approva / Rifiuta)", "CRUD Events & Spotted", "Featured 'In Evidenza' Toggle", "Vote Booster (+5, +10, +25 votes)", "Settings (Spotted reply thresholds, auto-approve PIN)"]
+    }
+  },
+  "component_guidelines": {
+    "cards": "bg-[#16161F]/80 backdrop-blur-md border border-white/10 rounded-2xl p-4 shadow-lg hover:border-violet-500/40 transition-all",
+    "badges": "px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide flex items-center gap-1",
+    "buttons_primary": "bg-gradient-to-r from-violet-600 to-pink-600 text-white font-medium rounded-xl px-4 py-2.5 shadow-md active:scale-95 transition-transform hover:brightness-110",
+    "buttons_secondary": "bg-white/10 hover:bg-white/15 text-white border border-white/10 rounded-xl px-4 py-2.5 transition-colors",
+    "inputs": "bg-[#0B0B0F] border border-white/15 focus:border-violet-500 text-white rounded-xl px-4 py-3 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+  },
+  "image_urls": {
+    "concert_nightlife": "https://images.unsplash.com/photo-1529787184525-7d3933bec5a0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2ODl8MHwxfHNlYXJjaHwzfHxpdGFseSUyMG5pZ2h0bGlmZSUyMHBhcnR5JTIwY29uY2VydCUyMGV2ZW50c3xlbnwwfHx8fDE3OTIxNjQ4NzV8MA&ixlib=rb-4.1.0&q=85",
+    "crowd_festival": "https://images.pexels.com/photos/39130885/pexels-photo-39130885.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "confetti_party": "https://images.pexels.com/photos/12761185/pexels-photo-12761185.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "historic_square_cafe": "https://images.pexels.com/photos/33099812/pexels-photo-33099812.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "potenza_street_market": "https://images.pexels.com/photos/34623199/pexels-photo-34623199.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+  },
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Ensure all interactive elements have data-testid attributes in kebab-case format.",
+    "Keep mobile phone aspect ratio container (max-w-md centered) on desktop for true PWA feel.",
+    "Use Vaul bottom sheet or Radix dialog customized as bottom sheet for mobile interactions.",
+    "Do NOT use pure black background for cards, use #16161F with backdrop blur and subtle white/10 borders.",
+    "Provide full interactive mock data for Potenza (e.g., Piazza Mario Pagano, Via Pretoria, Macchia Romana, Potenza Centro, Parco Montereale).",
+    "Enable full CRUD for events & spotted posts stored in state/localStorage so changes persist.",
+    "Include Admin PIN modal/toggle so reviewers can easily manage pending items and test boost buttons."
+  ]
+}
