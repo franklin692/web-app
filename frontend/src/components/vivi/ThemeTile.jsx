@@ -5,14 +5,14 @@ import { DynIcon } from "@/lib/icons";
 export const ThemeTile = ({ t, big }) => (
   <Link to={`/vivi/${t.slug}`} data-testid={`theme-tile-${t.slug}`}
     style={{ background: `linear-gradient(140deg, ${t.color}55 0%, ${t.color}14 55%, #16161F 100%)`, borderColor: `${t.color}44` }}
-    className={`group relative flex flex-col justify-between overflow-hidden rounded-3xl border p-4 transition-transform active:scale-[0.97] ${big ? "min-h-[160px]" : "h-32 w-40 shrink-0"}`}>
+    className={`group relative flex flex-col justify-between overflow-hidden rounded-3xl border p-4 transition-transform active:scale-[0.97] ${big ? "min-h-[160px]" : "min-h-[128px] w-40 shrink-0 gap-2"}`}>
     {t.image_url && (
       <>
         <img src={imgUrl(t.image_url)} alt="" className="absolute inset-0 h-full w-full object-cover opacity-60 transition-transform duration-700 group-hover:scale-105" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#0B0B0F] via-[#0B0B0F]/50 to-transparent" />
       </>
     )}
-    <span className="relative flex h-10 w-10 items-center justify-center rounded-2xl shadow-lg" style={{ background: t.color }}><DynIcon name={t.icon} className="h-5 w-5 text-white" /></span>
+    <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl shadow-lg" style={{ background: t.color }}><DynIcon name={t.icon} className="h-5 w-5 text-white" /></span>
     <div className="relative">
       <p className="font-display text-[15px] font-bold leading-tight text-white">{t.name}</p>
       {big && t.description && <p className="mt-1 line-clamp-2 text-[11px] text-zinc-300">{t.description}</p>}

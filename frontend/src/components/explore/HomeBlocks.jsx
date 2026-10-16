@@ -21,7 +21,7 @@ export const SectionTile = ({ s, big }) => (
   <Link to={`/bacheca/${s.slug}`} data-testid={`section-tile-${s.slug}`}
     style={{ background: `linear-gradient(140deg, ${s.color}55 0%, ${s.color}14 55%, #16161F 100%)`, borderColor: `${s.color}44` }}
     className={`relative flex flex-col justify-between overflow-hidden rounded-3xl border p-4 transition-transform active:scale-[0.97] ${big ? "min-h-[150px]" : "h-28 w-36 shrink-0"}`}>
-    <span className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ background: s.color }}><DynIcon name={s.icon} className="h-5 w-5 text-white" /></span>
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style={{ background: s.color }}><DynIcon name={s.icon} className="h-5 w-5 text-white" /></span>
     <div>
       <p className="font-display text-[15px] font-bold leading-tight text-white">{s.name}</p>
       {big && s.description && <p className="mt-1 line-clamp-2 text-[11px] text-zinc-300">{s.description}</p>}

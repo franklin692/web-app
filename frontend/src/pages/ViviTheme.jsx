@@ -80,7 +80,7 @@ export default function ViviTheme() {
             {filtered ? (
               <button data-testid="vivi-reset-filters" onClick={() => { setWhen("all"); setKind(""); setTown(""); }} className="rounded-full border border-white/10 px-4 py-2 text-xs font-semibold">Azzera filtri</button>
             ) : (
-              <button data-testid="vivi-suggest-button" onClick={() => window.dispatchEvent(new CustomEvent("cfp-add"))} className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 to-pink-600 px-5 py-2.5 text-sm font-bold"><Plus className="h-4 w-4" /> Segnala qualcosa</button>
+              <button data-testid="vivi-suggest-button" onClick={() => window.dispatchEvent(new CustomEvent("cfp-add", { detail: { themes: [slug] } }))} className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 to-pink-600 px-5 py-2.5 text-sm font-bold"><Plus className="h-4 w-4" /> Segnala qualcosa</button>
             )}
           </div>
         )}

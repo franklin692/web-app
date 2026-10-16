@@ -12,6 +12,8 @@ v2 (approved plan "Cosa Fare a Potenza 2.0"): Bacheca with configurable sections
 - 2026-06 v1 MVP (see iteration_1).
 - 2026-06 v2: Bacheca (6 default sections, dynamic fields/tags/reply labels/approval/duration/reactions/partner/expiry), Spotted migrated, login-gated publish/reply/report, poll (hidden results until vote, 1 vote per device+account), profile (Messaggi with unread badge, I miei annunci with edit/complete/delete + reject reason, Salvati, Account), Cabina di Regia (16 tabs super / 7 admin), banners (5 positions, views/clicks), backup export/restore, audit log. Tested iteration_2: backend 20/21 (the failure is fixed), all frontend flows pass. Minor fixes applied afterwards.
 
+- 2026-06 v2.1 "Vivi Potenza": Radar removed from nav (MapRadar page + /mappa route kept for restore), new tab /vivi with 12 admin-managed themes (collection `themes`, STRUCT generic admin, image/icon/color/description/linked subcategories). Membership = item.themes tag OR item.category in theme.subcategories (no fake data). /api/vivi/{slug} with when/kind/town/sort filters, dated vs permanent groups, curated empty states with prefilled "Segnala qualcosa". Home block "vivi" auto-merged into existing config (after ranking). Tested iteration_3: 35/35 backend, all UI flows pass.
+
 ## Backlog
 - P1: Mappa Radar (Leaflet dark, pins, flame halo); "Copia-Incolla Magico" AI importer; Roulette "Risolvi-Serata"; Pass Vantaggi
 - P2: Push notifications, venue manager profiles, sponsor online payments, advanced stats, password reset via email

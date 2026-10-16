@@ -21,6 +21,7 @@ import Admin from "@/pages/Admin";
 function Shell() {
   const [addOpen, setAddOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [prefill, setPrefill] = useState([]);
   const { user } = useAuth();
   const cfg = useConfig();
   useEffect(() => { if (cfg?.app_name) document.title = cfg.app_name; }, [cfg?.app_name]);
@@ -30,7 +31,7 @@ function Shell() {
     return () => window.removeEventListener("cfp-login", h);
   }, []);
   useEffect(() => {
-    const h = () => (user ? setAddOpen(true) : setLoginOpen(true));
+    const h = (e) => { setPrefill(e.detail?.themes || []); user ? setAddOpen(true) : setLoginOpen(true); };
     window.addEventListener("cfp-add", h);
     return () => window.removeEventListener("cfp-add", h);
   }, [user]);
@@ -53,9 +54,9 @@ function Shell() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
-        <BottomNav onPlus={() => (user ? setAddOpen(true) : setLoginOpen(true))} />
+        <BottomNav onPlus={() => { setPrefill([]); user ? setAddOpen(true) : setLoginOpen(true); }} />
         <LoginPrompt open={loginOpen} onOpenChange={setLoginOpen} />
-        <AddSheet open={addOpen} onOpenChange={setAddOpen} />
+        <AddSheet open={addOpen} onOpenChange={setAddOpen} prefillThemes={prefill} />
       </div>
     </div>
   );

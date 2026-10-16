@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 3: tested the Vivi Potenza feature (backend + frontend) and ran a quick regression. New pytest suite test_vivi_api.py: 14/14 pass. Regression test_v2_api.py: 21/21 pass, including the test_section_fields_without_key test that failed in iteration 2, which now passes. UI checks on mobile 390x844, plus desktop: bottom nav shows Vivi in place of Radar and /mappa still renders. The Home vivi-shortcuts block sits between trending and board, and 'Vedi tutte' goes to /vivi. The /vivi grid shows 12 tiles. Theme page checks: the when chips, kind select, A-Z sort, In programma / Sempre disponibili groups, filter results group, and the empty state with filters (Azzera filtri) all work. The empty theme (arte) shows 'Segnala qualcosa': guests get the login sheet and logged-in users get the AddSheet. A non-existent slug shows theme-not-found. In the item detail sheet, voting and undoing a vote work. The + form shows 12 field-theme chips; a place submitted with the arte tag appeared in /vivi/arte after approval from the admin queue UI. Admin tab Vivi Potenza: create, edit description, hide (removed from config and from the Vivi page) and delete (window.confirm) all work. Home Builder: renaming and toggling the vivi block shows up on Home. Regression: Explore search, Bacheca, Profile and admin queue work. Backup includes themes. No JS page errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/submissions/item, POST/PUT /api/admin/items", "issue": "ItemIn.themes is not checked against existing theme slugs, so any string is stored (up to 12 entries). Harmless for display, but it lets junk data in. Suggest filtering to existing slugs in validate_item."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home - Vivi Potenza horizontal tiles (ThemeTile non-big, h-32 w-40)", "issues": ["When the name wraps to 2 lines and the upcoming text also wraps (e.g. 'Concerti, musica e spettacoli' + '2 proposte · 2 in programma'), the tile content overflows the fixed h-32 and the icon badge gets squeezed vertically (flex-col shrink). Add shrink-0 to the icon span and/or use min-h instead of a fixed h-32."]},
+      {"screen": "Admin > Vivi Potenza rows (Struct Row)", "issues": ["The visibility Toggle partly overlaps the ChevronDown icon on mobile width (minor)."]},
+      {"screen": "ViviTheme empty state -> Segnala qualcosa", "issues": ["UX enhancement: the AddSheet opens without pre-selecting the current theme chip, so the user has to find and tag the theme by hand. Consider passing the slug in the cfp-add event detail to pre-fill themes."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_vivi_api.py", "/app/backend/tests/test_v2_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(minor) Add shrink-0 to the ThemeTile icon span and avoid a fixed h-32 so the small Home tiles don't overflow or squeeze the icon",
+    "(minor) Validate item.themes against existing theme slugs in the backend",
+    "(optional) Pre-select the current theme when 'Segnala qualcosa' is clicked from /vivi/:slug"
+  ],
+  "critical_code_review_comments": [
+    "The dated vs permanent split in ViviTheme.jsx uses cats[kind].dated on the frontend while the backend uses DATED. Both come from categories.dated, so they agree today; worth keeping in mind.",
+    "themes_with_counts runs on every /api/config call and loads every public item (up to 2000), then loops over items for each theme. Fine at current scale; cache it or use an aggregation if the data grows.",
+    "server.py is about 1700 lines; consider splitting the routers (vivi, struct, admin) into modules."
+  ],
+  "updated_files": ["/app/backend/tests/test_vivi_api.py"],
+  "success_rate": {"backend": "100% (35/35)", "frontend": "100% of tested flows (3 minor design notes)"},
+  "test_credentials": "Super Admin admin/admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None kept. Test items, themes and users were deleted. The 12 default themes are visible and in their original order, and the Home block label and enabled state were restored.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app && REACT_APP_BACKEND_URL=... python -m pytest backend/tests/test_vivi_api.py backend/tests/test_v2_api.py -n 0 (takes about 170s, so run it in the background). test_vivi_api.py cleans up after itself (deletes TEST_ items and themes, un-hides hidden themes). Backup response format: {version, exported_at, data:{coll:[...]}}. A user-submitted item lands in /api/admin/pending and is approved via POST /api/admin/items/{id}/status {status:'approved'}; the UI testid is approve-{id}."
+}

@@ -48,7 +48,7 @@ export const validateEntry = (opt, form, cats) => {
   return null;
 };
 
-export const AddSheet = ({ open, onOpenChange }) => {
+export const AddSheet = ({ open, onOpenChange, prefillThemes = [] }) => {
   const qc = useQueryClient();
   const cfg = useConfig();
   const options = usePickOptions();
@@ -83,7 +83,7 @@ export const AddSheet = ({ open, onOpenChange }) => {
           <PrimaryButton data-testid="add-success-close" onClick={() => onOpenChange(false)}>Chiudi</PrimaryButton>
         </div>
       ) : !opt ? (
-        <KindPicker options={options} onPick={(o) => { setOpt(o); setForm(emptyFor(o)); }} />
+        <KindPicker options={options} onPick={(o) => { setOpt(o); setForm(o.type === "item" ? { ...emptyFor(o), themes: prefillThemes } : emptyFor(o)); }} />
       ) : (
         <div className="flex flex-col gap-5">
           <button data-testid="add-back-button" onClick={() => setOpt(null)} className="inline-flex w-fit items-center gap-1 text-sm text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /> Cambia tipo</button>

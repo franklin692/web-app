@@ -351,6 +351,11 @@ def level(score: int) -> int:
     return 4
 
 
+async def clean_themes(data: dict):
+    valid = {t["slug"] async for t in db.themes.find({}, {"slug": 1})}
+    data["themes"] = [t for t in dict.fromkeys(data.get("themes") or []) if t in valid]
+
+
 def validate_item(data: dict):
     if data["kind"] not in KINDS:
         raise HTTPException(422, "Tipo non valido")
@@ -1296,6 +1301,7 @@ async def delete_my_post(pid: str, user: User = Depends(require_user)):
 async def edit_my_item(item_id: str, body: ItemIn, user: User = Depends(require_member)):
     data = body.model_dump()
     validate_item(data)
+    await clean_themes(data)
     res = await db.items.update_one({"_id": oid(item_id), "created_by": f"u:{user.id}"}, {"$set": {**data, "status": "pending", "reject_reason": ""}})
     if not res.matched_count:
         raise HTTPException(404, "Elemento non trovato")
@@ -1312,6 +1318,7 @@ async def delete_my_item(item_id: str, user: User = Depends(require_user)):
 async def submit_item(body: ItemIn, user: User = Depends(require_member)):
     data = body.model_dump()
     validate_item(data)
+    await clean_themes(data)
     await db.items.insert_one(Item(**data, status="pending", created_by=f"u:{user.id}").to_mongo())
     return {"ok": True}
 
@@ -1351,6 +1358,7 @@ async def admin_item_out(item_id: str):
 async def admin_create_item(body: ItemIn, a=Depends(require_admin)):
     data = body.model_dump()
     validate_item(data)
+    await clean_themes(data)
     res = await db.items.insert_one(Item(**data, status="approved", created_by="admin").to_mongo())
     await audit(a, "crea elemento", data["title"])
     return await admin_item_out(str(res.inserted_id))
@@ -1360,6 +1368,7 @@ async def admin_create_item(body: ItemIn, a=Depends(require_admin)):
 async def admin_update_item(item_id: str, body: ItemIn, a=Depends(require_admin)):
     data = body.model_dump()
     validate_item(data)
+    await clean_themes(data)
     res = await db.items.update_one({"_id": oid(item_id)}, {"$set": data})
     if not res.matched_count:
         raise HTTPException(404, "Elemento non trovato")
