@@ -1,6 +1,7 @@
 import { useConfig } from "@/hooks/useConfig";
 import { SectionTile } from "@/components/explore/HomeBlocks";
 import { BannerSlot } from "@/components/Banner";
+import { ProposalCard } from "@/components/ProposalSheet";
 
 export default function Board() {
   const cfg = useConfig();
@@ -14,6 +15,7 @@ export default function Board() {
       <div data-testid="board-grid" className="mt-6 grid grid-cols-2 gap-3">
         {cfg?.sections.map((s) => <SectionTile key={s.slug} s={s} big />)}
       </div>
+      <ProposalCard area="bacheca" testId="board-proposal-card" />
     </div>
   );
 }

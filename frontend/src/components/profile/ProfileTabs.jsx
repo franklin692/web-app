@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ShieldCheck, ChevronRight, Pencil, Trash2, CheckCheck, Loader2 } from "lucide-react";
+import { ShieldCheck, ChevronRight, Pencil, Trash2, CheckCheck, Loader2, Star } from "lucide-react";
 import { toast } from "sonner";
 import { api, errMsg } from "@/lib/api";
 import { LISTING_STATUS as STATUS, timeAgo, EMPTY_ITEM } from "@/lib/meta";
+import { FOLLOW_KINDS } from "@/lib/calendar";
+import { Toggle } from "@/components/admin/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useCats, useSections } from "@/hooks/useConfig";
 import { ItemCard } from "@/components/ItemCard";
@@ -39,9 +41,9 @@ const Inbox = () => {
     <ul data-testid="inbox-list" className="flex flex-col gap-3">
       {data?.map((r) => (
         <li key={r.id} data-testid={`inbox-${r.id}`} className={`rounded-2xl border p-4 ${r.read ? "border-white/10 bg-[#16161F]" : "border-pink-500/40 bg-pink-500/10"}`}>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Su: <span className="text-pink-300">{r.post_title}</span> · {timeAgo(r.created_at)}</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{r.kind === "wave" ? <span className="text-violet-300">Saluto 👋 · {r.post_title}</span> : <>Su: <span className="text-pink-300">{r.post_title}</span></>} · {timeAgo(r.created_at)}</p>
           <p className="mt-2 text-sm text-zinc-200">{r.message}</p>
-          <p className="mt-2 text-xs"><span className="text-zinc-500">da @{r.from_name} · </span><span className="font-semibold text-pink-300">{r.contact}</span></p>
+          <p className="mt-2 text-xs"><span className="text-zinc-500">da @{r.from_name}</span>{r.contact && <span className="font-semibold text-pink-300"> · {r.contact}</span>}</p>
         </li>
       ))}
     </ul>
@@ -112,11 +114,43 @@ const MyListings = () => {
   );
 };
 
+const useSavedItems = () => useQuery({ queryKey: ["saved"], queryFn: async () => (await api.get("/me/saved")).data });
+
+const Followed = () => {
+  const nav = useNavigate();
+  const { data } = useSavedItems();
+  const list = data?.filter((it) => FOLLOW_KINDS.includes(it.kind));
+  if (list?.length === 0) return <Empty testId="followed-empty">Non segui ancora nessun locale o luogo. Tocca «Segui 🔔» nella loro scheda.</Empty>;
+  return <div data-testid="followed-list" className="flex flex-col gap-3">{list?.map((it, i) => <ItemCard key={it.id} item={it} index={i} onOpen={(id) => nav(`/item/${id}`)} />)}</div>;
+};
+
 const Saved = () => {
   const nav = useNavigate();
-  const { data } = useQuery({ queryKey: ["saved"], queryFn: async () => (await api.get("/me/saved")).data });
-  if (data?.length === 0) return <Empty testId="saved-empty">Nessun salvato. Tocca ⭐ su un evento o locale.</Empty>;
-  return <div data-testid="saved-list" className="flex flex-col gap-3">{data?.map((it, i) => <ItemCard key={it.id} item={it} index={i} onOpen={(id) => nav(`/item/${id}`)} />)}</div>;
+  const secs = useSections();
+  const { data } = useSavedItems();
+  const posts = useQuery({ queryKey: ["saved-posts"], queryFn: async () => (await api.get("/me/saved-posts")).data });
+  const list = data?.filter((it) => !FOLLOW_KINDS.includes(it.kind));
+  if (list?.length === 0 && posts.data?.length === 0) return <Empty testId="saved-empty">Nessun salvato. Tocca «Salva ⭐» su un evento, un corso o un annuncio.</Empty>;
+  return (
+    <div data-testid="saved-list" className="flex flex-col gap-3">
+      {list?.map((it, i) => <ItemCard key={it.id} item={it} index={i} onOpen={(id) => nav(`/item/${id}`)} />)}
+      {posts.data?.map((p) => (
+        <button key={p.id} data-testid={`saved-post-${p.id}`} onClick={() => nav(`/bacheca/${p.section}?p=${p.id}`)} className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#16161F] p-3 text-left">
+          <Star className="h-4 w-4 shrink-0 fill-amber-300 text-amber-300" />
+          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{p.title}</span><span className="text-[11px] text-zinc-500">Bacheca · {secs[p.section]?.name || p.section}</span></span>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const NewsletterToggle = () => {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["me", "newsletter"], queryFn: async () => (await api.get("/me/newsletter")).data });
+  const set = async (on) => {
+    try { await api.put("/me/newsletter", { on }); qc.invalidateQueries({ queryKey: ["me", "newsletter"] }); toast.success(on ? "Iscritto/a alla Newsletter del Weekend 📧" : "Disiscritto/a dalla newsletter"); } catch (e) { toast.error(errMsg(e)); }
+  };
+  return <Toggle testId="account-newsletter-toggle" checked={!!data?.on} onChange={set} label="Ricevi la Newsletter del Weekend 📧" />;
 };
 
 const Account = () => {
@@ -132,6 +166,7 @@ const Account = () => {
   const box = "flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#16161F] p-4";
   return (
     <div className="flex flex-col gap-4">
+      <div className={box}><p className="font-display font-bold">Newsletter</p><NewsletterToggle /></div>
       <div className={box}>
         <p className="font-display font-bold">Cambia password</p>
         <input data-testid="account-old-password" type="password" placeholder="Password attuale" className={inputCls} value={pw.old} onChange={(e) => setPw({ ...pw, old: e.target.value })} />
@@ -155,7 +190,7 @@ const Account = () => {
   );
 };
 
-const TABS = [["inbox", "Messaggi", Inbox], ["listings", "I miei annunci", MyListings], ["saved", "Salvati ⭐", Saved], ["account", "Account", Account]];
+const TABS = [["inbox", "Messaggi", Inbox], ["followed", "Seguiti 🔔", Followed], ["saved", "Salvati ⭐", Saved], ["listings", "I miei annunci", MyListings], ["account", "Account", Account]];
 
 export const ProfileTabs = () => {
   const [tab, setTab] = useState("inbox");

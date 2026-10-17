@@ -4,7 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { adminApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { AdminQueue, AdminPosts, AdminReports, AdminReplies } from "@/components/admin/Moderation";
+import { AdminQueue, AdminPosts, AdminReports } from "@/components/admin/Moderation";
+import { AdminArchive } from "@/components/admin/Archive";
+import { CityAdmin } from "@/components/admin/CityAdmin";
+import { AdminInbox } from "@/components/admin/AdminInbox";
 import { AdminManage } from "@/components/admin/AdminManage";
 import { AdminPolls } from "@/components/admin/Polls";
 import { StructAdmin } from "@/components/admin/Struct";
@@ -14,7 +17,8 @@ import { AdminEditor } from "@/components/admin/AdminEditor";
 
 const TABS = [
   ["queue", "Coda", false], ["reports", "Segnalazioni", false], ["manage", "Esplora", false], ["posts", "Bacheca", false],
-  ["polls", "Sondaggi", false], ["replies", "Risposte", false], ["stats", "Statistiche", false],
+  ["archive", "Archivio Eventi Passati", false], ["inbox", "Proposte & Contatti", false], ["city", "Benzina & Info", false],
+  ["polls", "Sondaggi", false], ["stats", "Statistiche", false],
   ["vivi", "Vivi Potenza", true], ["cats", "Categorie", true], ["sections", "Sezioni Bacheca", true], ["zones", "Zone & Paesi", true], ["home", "Home", true],
   ["banners", "Banner & Sponsor", true], ["texts", "Testi & Regole", true], ["users", "Utenti", true], ["audit", "Registro", true], ["backup", "Backup", true],
 ];
@@ -31,7 +35,7 @@ export default function Admin() {
   const tabs = TABS.filter((t) => !t[2] || isSuper);
   const C = {
     queue: <AdminQueue onEdit={setEditing} />, reports: <AdminReports />, manage: <AdminManage onEdit={setEditing} />, posts: <AdminPosts onEdit={setEditing} />,
-    polls: <AdminPolls />, replies: <AdminReplies />, stats: <AdminStats />, vivi: <StructAdmin coll="themes" />, cats: <StructAdmin coll="categories" />, sections: <StructAdmin coll="sections" />,
+    polls: <AdminPolls />, archive: <AdminArchive onEdit={setEditing} />, inbox: <AdminInbox />, city: <CityAdmin />, stats: <AdminStats />, vivi: <StructAdmin coll="themes" />, cats: <StructAdmin coll="categories" />, sections: <StructAdmin coll="sections" />,
     zones: <ZonesTowns />, home: <HomeBuilder />, banners: <AdminBanners />, texts: <TextsRules />, users: <AdminUsers />, audit: <AdminAudit />, backup: <AdminBackup />,
   };
   return (

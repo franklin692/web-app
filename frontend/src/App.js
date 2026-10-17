@@ -17,6 +17,10 @@ import { useConfig } from "@/hooks/useConfig";
 import { useEffect } from "react";
 import Profile from "@/pages/Profile";
 import Admin from "@/pages/Admin";
+import Utility from "@/pages/Utility";
+import Contact from "@/pages/Contact";
+import { LiveSheet } from "@/components/live/LiveSheet";
+import { ProposalSheet } from "@/components/ProposalSheet";
 
 function Shell() {
   const [addOpen, setAddOpen] = useState(false);
@@ -51,12 +55,16 @@ function Shell() {
             <Route path="/spotted" element={<Navigate to="/bacheca/spotted" replace />} />
             <Route path="/profilo" element={<Profile />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/info-utili" element={<Utility />} />
+            <Route path="/contatti" element={<Contact />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
         <BottomNav onPlus={() => { if (!ready) return; setPrefill([]); user ? setAddOpen(true) : setLoginOpen(true); }} />
         <LoginPrompt open={loginOpen} onOpenChange={setLoginOpen} />
         <AddSheet open={addOpen} onOpenChange={setAddOpen} prefillThemes={prefill} />
+        <LiveSheet />
+        <ProposalSheet />
       </div>
     </div>
   );

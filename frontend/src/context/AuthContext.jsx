@@ -25,7 +25,7 @@ export function AuthProvider({ children }) {
   }, [qc]);
 
   const login = async (identifier, password) => applySession((await api.post("/auth/login", { identifier, password })).data);
-  const register = async (username, email, password) => applySession((await api.post("/auth/register", { username, email, password })).data);
+  const register = async (username, email, password, newsletter = false) => applySession((await api.post("/auth/register", { username, email, password, newsletter })).data);
   const logout = () => {
     localStorage.removeItem("cfp_token");
     setUser(null);

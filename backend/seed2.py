@@ -8,14 +8,14 @@ TOWNS = [("Potenza", "Potenza"), ("Abriola", "Potenza e dintorni"), ("Avigliano"
          ("Lauria", "Lagonegrese"), ("Maratea", "Lagonegrese"), ("Muro Lucano", "Marmo Platano"), ("Brienza", "Melandro"),
          ("Sasso di Castalda", "Melandro"), ("Castelmezzano", "Dolomiti Lucane"), ("Pietrapertosa", "Dolomiti Lucane")]
 
-BLOCKS = [("alert", "Avviso"), ("poll", "Sondaggio del Giorno"), ("banner", "Banner sponsor"), ("featured", "In Evidenza stasera"),
-          ("trending", "Dove va Potenza stasera"), ("vivi", "Vivi Potenza"), ("board", "Dalla Bacheca"), ("list", "Tutto a Potenza")]
+BLOCKS = [("alert", "Avviso"), ("live", "Potenza Live"), ("poll", "Sondaggio del Giorno"), ("banner", "Banner sponsor"), ("featured", "In Evidenza stasera"),
+          ("trending", "Classifica Live"), ("vivi", "Vivi Potenza"), ("board", "Dalla Bacheca"), ("list", "Tutto a Potenza")]
 
 DEFAULT_CONFIG = {
     "_id": "app", "app_name": "Cosa Fare a Potenza", "logo_url": "",
     "texts": {"submit_success": "Grazie! Il tuo contributo è stato inviato agli Admin e sarà pubblico appena approvato.",
               "submit_published": "Pubblicato! Il tuo annuncio è già visibile a tutti.",
-              "going_label": "Ci sarò stasera 👋", "here_label": "Ci sono ORA 📍",
+              "going_label": "Ci sarò 👋", "here_label": "Ci sono ORA 📍",
               "radar_text": "Presto vedrai su una mappa scura di Potenza e provincia dove si accende la serata, con le fiamme sui posti più frequentati."},
     "trend": {"threshold": 20, "going_hours": 12, "here_hours": 4,
               "labels": {"1": "In movimento ⚡", "2": "Di tendenza stasera 🔥", "3": "Molto frequentato 🔥🔥", "4": "Pieno / Evento Top 🚀"}},
@@ -23,6 +23,7 @@ DEFAULT_CONFIG = {
              "alert": {"text": "", "level": "info", "link": "", "start": "", "end": "", "active": False},
              "blocks": [{"id": b, "label": l, "enabled": True} for b, l in BLOCKS],
              "time_labels": {"tonight": "Stasera", "weekend": "Questo Weekend", "all": "Tutti"}},
+    "contacts": {"email": "", "whatsapp": "", "instagram": ""},
     "zones": [{"name": z, "hidden": False} for z in ZONES],
     "towns": [{"name": t, "area": a, "hidden": False} for t, a in TOWNS],
 }

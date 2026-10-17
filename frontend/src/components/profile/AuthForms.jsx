@@ -4,12 +4,14 @@ import { toast } from "sonner";
 import { errMsg } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Field, inputCls, PrimaryButton } from "@/components/forms/Field";
+import { Toggle } from "@/components/admin/ui";
 
 export const AuthForms = () => {
   const { login, register } = useAuth();
   const [mode, setMode] = useState("login");
   const [f, setF] = useState({ identifier: "", username: "", email: "", password: "" });
   const [busy, setBusy] = useState(false);
+  const [news, setNews] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   const submit = async (e) => {
@@ -17,7 +19,7 @@ export const AuthForms = () => {
     setBusy(true);
     try {
       if (mode === "login") await login(f.identifier, f.password);
-      else await register(f.username, f.email, f.password);
+      else await register(f.username, f.email, f.password, news);
       toast.success("Benvenuto/a! 👋");
     } catch (err) {
       toast.error(errMsg(err));
@@ -43,6 +45,7 @@ export const AuthForms = () => {
           </>
         )}
         <Field label="Password"><input data-testid="auth-password-input" type="password" className={inputCls} value={f.password} onChange={set("password")} autoComplete={mode === "login" ? "current-password" : "new-password"} /></Field>
+        {mode === "register" && <Toggle testId="register-newsletter-toggle" checked={news} onChange={setNews} label={<span className="text-xs">Iscrivimi alla Newsletter del Weekend 📧</span>} />}
         <PrimaryButton data-testid="auth-submit-button" type="submit" disabled={busy}>
           {busy && <Loader2 className="h-5 w-5 animate-spin" />} {mode === "login" ? "Accedi" : "Crea account"}
         </PrimaryButton>

@@ -17,7 +17,7 @@ export const ThemeTile = ({ t, big }) => (
       <p className="font-display text-[15px] font-bold leading-tight text-white">{t.name}</p>
       {big && t.description && <p className="mt-1 line-clamp-2 text-[11px] text-zinc-300">{t.description}</p>}
       <p className="mt-1 text-[11px] font-semibold text-zinc-400">
-        {t.count ? `${t.count} ${t.count === 1 ? "proposta" : "proposte"}` : "In arrivo"}
+        {t.count ? `${t.count} ${t.count === 1 ? "proposta" : "proposte"}` : <span className="text-violet-300">Esplora o proponi ✨</span>}
         {t.upcoming > 0 && <span className="text-pink-300"> · {t.upcoming} in programma</span>}
       </p>
     </div>

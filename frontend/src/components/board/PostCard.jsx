@@ -1,4 +1,5 @@
-import { Share2, Flag, MessageCircleHeart, Link2, BadgeCheck } from "lucide-react";
+import { Share2, Star, MessageCircleHeart, Link2, BadgeCheck } from "lucide-react";
+import { ReportLink } from "@/components/board/ReplySheets";
 import { imgUrl } from "@/lib/api";
 import { timeAgo } from "@/lib/meta";
 import { shareLink } from "@/lib/share";
@@ -14,7 +15,7 @@ export const PartnerBadge = ({ s }) =>
     </span>
   ) : null;
 
-export const PostCard = ({ p, section, onReact, onReply, onReport, highlight, index = 0 }) => {
+export const PostCard = ({ p, section, onReact, onReply, onReport, onSave, highlight, index = 0 }) => {
   const fields = section.fields.filter((f) => String(p.data[f.key] ?? "").trim());
   const photo = fields.find((f) => f.type === "photo");
   const long = fields.filter((f) => f.type === "textarea");
@@ -46,13 +47,14 @@ export const PostCard = ({ p, section, onReact, onReply, onReport, highlight, in
             </button>
           ))}
           <span className="flex-1" />
-          <button data-testid={`post-report-${p.id}`} onClick={() => onReport(p)} className="rounded-full border border-white/10 bg-white/5 p-2 text-zinc-400" aria-label="Segnala"><Flag className="h-4 w-4" /></button>
+          <button data-testid={`post-save-${p.id}`} onClick={() => onSave(p.id)} className={`rounded-full border p-2 ${p.saved ? "border-amber-400/40 bg-amber-400/15 text-amber-300" : "border-white/10 bg-white/5 text-zinc-300"}`} aria-label="Salva"><Star className={`h-4 w-4 ${p.saved ? "fill-amber-300" : ""}`} /></button>
           <button data-testid={`post-share-${p.id}`} onClick={() => shareLink(`/bacheca/${section.slug}?p=${p.id}`, p.title, `${section.name}: ${p.title}`)} className="rounded-full border border-white/10 bg-white/5 p-2 text-zinc-300" aria-label="Condividi"><Share2 className="h-4 w-4" /></button>
         </div>
         <button data-testid={`post-reply-button-${p.id}`} onClick={() => onReply(p)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold text-white transition-transform active:scale-[0.98]"
           style={{ background: `linear-gradient(90deg, ${section.color}, #EC4899)` }}>
           <MessageCircleHeart className="h-4 w-4" /> {section.reply_label || "Rispondi"}
         </button>
+        <div className="mt-3 text-center"><ReportLink testId={`post-report-${p.id}`} onClick={() => onReport(p)} /></div>
       </div>
     </article>
   );

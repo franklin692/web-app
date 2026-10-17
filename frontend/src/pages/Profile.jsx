@@ -1,4 +1,5 @@
-import { LogOut } from "lucide-react";
+import { LogOut, Mail, ChevronRight } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { AuthForms } from "@/components/profile/AuthForms";
 import { ProfileTabs, AdminLink } from "@/components/profile/ProfileTabs";
@@ -29,6 +30,11 @@ export default function Profile() {
       )}
       <AdminLink />
       {user ? <ProfileTabs /> : <AuthForms />}
+      <Link to="/contatti" data-testid="profile-contact-link" className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#16161F] p-4">
+        <Mail className="h-5 w-5 text-orange-300" />
+        <span className="flex-1"><span className="block font-display font-bold">📩 Contattaci / Pubblicizza la tua attività</span><span className="text-xs text-zinc-400">Collaborazioni, pubblicità, segnalazioni</span></span>
+        <ChevronRight className="h-5 w-5 text-zinc-500" />
+      </Link>
     </div>
   );
 }

@@ -39,6 +39,7 @@ export const ItemCard = ({ item, onOpen, index = 0 }) => {
           <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{item.zone || item.town}{item.town !== "Potenza" && item.zone ? ` · ${item.town}` : ""}</span>
         </div>
         {item.level > 0 && <div><TrendBadge level={item.level} count={item.display_count} /></div>}
+        {item.spotlight_count > 0 && <span data-testid={`spotlight-count-${item.id}`} className="w-fit rounded-full border border-violet-400/40 bg-violet-500/15 px-2 py-0.5 text-[10px] font-bold text-violet-200">✨ {item.spotlight_count} nello Spotlight</span>}
       </div>
     </button>
   );

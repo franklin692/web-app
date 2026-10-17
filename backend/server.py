@@ -6,13 +6,6 @@ load_dotenv(ROOT_DIR / ".env")
 
 import os
 import re
-import json
-import base64
-import asyncio
-import httpx
-import socket
-import ipaddress
-from urllib.parse import urlparse, urljoin
 import copy
 import uuid
 import secrets
@@ -31,8 +24,6 @@ from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
 from motor.motor_asyncio import AsyncIOMotorClient
 from starlette.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
-from fastapi.responses import StreamingResponse
-from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent, TextDelta, StreamDone
 
 from seed import build_seed
 from seed2 import DEFAULT_THEMES, DEFAULT_CONFIG, DEFAULT_CATEGORIES, DEFAULT_SECTIONS, SPOT_TAG_MAP, seed_posts, seed_poll
@@ -100,7 +91,6 @@ class Item(BaseDocument):
     featured: bool = False
     boost: int = 0
     themes: list = Field(default_factory=list)
-    ai_review: dict = Field(default_factory=dict)
     created_by: Optional[str] = None
     created_at: str = Field(default_factory=iso_now)
 
@@ -178,6 +168,7 @@ class RegisterIn(BaseModel):
     username: str
     email: str
     password: str
+    newsletter: bool = False
 
 
 class LoginIn(BaseModel):
@@ -332,7 +323,8 @@ def event_window(it: Item):
         if end <= start:
             end += timedelta(days=1)
     else:
-        end = start + timedelta(hours=6)
+        st = _t(it.start_time)
+        end = datetime.combine(d + timedelta(days=1), time(4, 0), tzinfo=ROME) if st and st >= time(20, 0) else datetime.combine(d, time(23, 59), tzinfo=ROME)
     return start, end
 
 
@@ -407,7 +399,7 @@ async def present(items, ident=None, admin=False):
         d = it.model_dump()
         created_by = d.pop("created_by", None)
         d.update(level=level(score), display_count=score if score > 0 and score >= thr else None,
-                 my_vote=my_votes.get(it.id), saved=it.id in saved, _score=score, _tonight=True, _weekend=True)
+                 my_vote=my_votes.get(it.id), saved=it.id in saved, _score=score, _going=c["going"], _here=c["here"], _tonight=True, _weekend=True)
         if it.kind in DATED:
             s, e = event_window(it)
             if s:
@@ -428,7 +420,11 @@ def clean(d):
 
 async def load_public_items():
     docs = await db.items.find({"status": "approved"}).to_list(2000)
-    return [i for i in (Item.from_mongo(d) for d in docs) if not is_expired(i) and i.kind not in HIDDEN_CATS]
+    items = [Item.from_mongo(d) for d in docs]
+    old = [ObjectId(i.id) for i in items if is_expired(i)]
+    if old:
+        await db.items.update_many({"_id": {"$in": old}, "status": "approved"}, {"$set": {"status": "archived", "archived_at": iso_now()}})
+    return [i for i in items if not is_expired(i) and i.kind not in HIDDEN_CATS]
 
 
 def spotted_public(s: Spotted, mine=None):
@@ -488,8 +484,21 @@ async def home(request: Request):
     featured = sorted([p for p in pres if p["featured"]], key=lambda p: (p["kind"] not in DATED, p.get("start_iso", "")))
     trending = [p for p in pres if (p["kind"] in DATED and p["_tonight"]) or (p["kind"] not in DATED and p["_score"] > 0)]
     trending.sort(key=lambda p: (-p["_score"], not p.get("live", False)))
+    reps = {}
+    async for r in db.live_reports.find({"item_id": {"$nin": [None, ""]}, "expires_at": {"$gt": now_utc()}}):
+        reps[r["item_id"]] = reps.get(r["item_id"], 0) + 1 + len(r.get("confirms", []))
+    for p in pres:
+        p["live_count"] = p["_here"] + reps.get(p["id"], 0)
+        p["going_count"] = p["_going"]
+    live = [p for p in pres if p.get("live") or (p["kind"] not in DATED and p["live_count"] > 0)]
+    live.sort(key=lambda p: (-p["live_count"], -p["_score"]))
+    lim = (datetime.now(ROME).date() + timedelta(days=7)).isoformat()
+    upcoming = [p for p in pres if (p["kind"] in DATED and p.get("start_iso") and not p.get("live") and p["start_iso"][:10] <= lim)
+                or (p["kind"] not in DATED and p["_going"] > 0)]
+    upcoming.sort(key=lambda p: (-(p["_going"] + p["boost"]), p.get("start_iso") or "9"))
     st = await get_settings()
     return {"featured": [clean(p) for p in featured], "trending": [clean(p) for p in trending[:10]],
+            "live": [clean(p) for p in live[:10]], "upcoming": [clean(p) for p in upcoming[:10]],
             "threshold": st.get("threshold", 20)}
 
 
@@ -547,6 +556,10 @@ async def vote(item_id: str, body: VoteIn, request: Request):
                     exp = max(now + timedelta(minutes=5), end.astimezone(timezone.utc))
         await db.votes.update_one({"item_id": it.id, "voter": voter},
                                   {"$set": {"type": body.type, "expires_at": exp, "updated_at": now}}, upsert=True)
+    if ident["user"]:
+        v = await db.votes.find_one({"item_id": it.id, "voter": voter})
+        if not v or v["type"] != "here":
+            await db.spotlight.delete_many({"item_id": it.id, "user_id": ident["user"].id})
     return clean((await present([it], ident))[0])
 
 
@@ -663,7 +676,8 @@ async def public_config():
         secs.append(o)
     return {"app_name": c["app_name"], "logo_url": c["logo_url"], "texts": c["texts"], "trend": c["trend"], "home": resolve_home(c["home"]),
             "zones": [z["name"] for z in c["zones"] if not z.get("hidden")], "towns": [t for t in c["towns"] if not t.get("hidden")],
-            "categories": cats, "sections": secs, "themes": await themes_with_counts()}
+            "categories": cats, "sections": secs, "themes": await themes_with_counts(),
+            "contacts": {k: v for k, v in (c.get("contacts") or {}).items() if v}}
 
 
 def in_theme(t, it):
@@ -716,7 +730,7 @@ async def require_super(request: Request):
     return a
 
 
-CONFIG_KEYS = {"app_name", "logo_url", "texts", "trend", "home", "zones", "towns"}
+CONFIG_KEYS = {"app_name", "logo_url", "texts", "trend", "home", "zones", "towns", "contacts"}
 
 
 @api.get("/admin/config")
@@ -883,12 +897,20 @@ def post_expiry(sec, data):
     return now_utc() + timedelta(days=days) if days > 0 else None
 
 
-def post_out(d, mine=None, admin=False):
+def post_out(d, mine=None, admin=False, saved=False):
     o = doc_out(d)
+    o.pop("ai_review", None); o.pop("ai_held", None)
     if not admin:
         o.pop("owner_user", None); o.pop("owner_name", None)
     o["my_reactions"] = mine or []
+    o["saved"] = saved
     return o
+
+
+async def post_saved(voter, ids):
+    if not voter:
+        return set()
+    return {s["post_id"] async for s in db.post_saves.find({"voter": voter, "post_id": {"$in": ids}})}
 
 
 async def post_reacts(voter, ids):
@@ -910,8 +932,10 @@ async def board_section(slug: str, request: Request, tag: str = "", q: str = "")
     q = q.strip().lower()
     if q:
         docs = [d for d in docs if q in d.get("title", "").lower() or any(q in str(v).lower() for v in d.get("data", {}).values())]
-    mine = await post_reacts(ident["voter"], [str(d["_id"]) for d in docs])
-    return {"section": doc_out(sec), "posts": [post_out(d, mine.get(str(d["_id"]))) for d in docs]}
+    ids = [str(d["_id"]) for d in docs]
+    mine = await post_reacts(ident["voter"], ids)
+    sv = await post_saved(ident["voter"], ids)
+    return {"section": doc_out(sec), "posts": [post_out(d, mine.get(str(d["_id"])), saved=str(d["_id"]) in sv) for d in docs]}
 
 
 async def public_post(pid):
@@ -926,10 +950,9 @@ async def create_post(slug: str, body: PostIn, user: User = Depends(require_memb
     sec = await get_section(slug)
     data, tag = clean_post(sec, body.data, body.tag)
     status = "pending" if sec.get("requires_approval") else "approved"
-    res = await db.posts.insert_one({"section": slug, "data": data, "tag": tag, "title": title_of(sec, data), "status": status, "reject_reason": "",
+    await db.posts.insert_one({"section": slug, "data": data, "tag": tag, "title": title_of(sec, data), "status": status, "reject_reason": "",
                                "completed": False, "reactions": {"heart": 0, "eyes": 0, "fire": 0}, "owner_user": user.id,
                                "owner_name": user.username, "created_at": iso_now(), "expires_at": post_expiry(sec, data)})
-    schedule_moderation("posts", res.inserted_id)
     return {"ok": True, "status": status}
 
 
@@ -953,7 +976,7 @@ async def post_react(pid: str, body: ReactIn, request: Request):
     if inc:
         await db.posts.update_one({"_id": d["_id"]}, {"$inc": {f"reactions.{body.type}": inc}})
     d = await db.posts.find_one({"_id": d["_id"]})
-    return post_out(d, (await post_reacts(voter, [pid])).get(pid))
+    return post_out(d, (await post_reacts(voter, [pid])).get(pid), saved=pid in await post_saved(voter, [pid]))
 
 
 @api.post("/posts/{pid}/reply")
@@ -974,17 +997,20 @@ class ReportIn(BaseModel):
 
 
 @api.post("/reports")
-async def report(body: ReportIn, user: User = Depends(require_member)):
+async def report(body: ReportIn, request: Request):
+    ident = await get_identity(request)
+    voter = need_voter(ident)
     if body.target_type not in ("item", "post"):
         raise HTTPException(422, "Tipo non valido")
     coll = db.items if body.target_type == "item" else db.posts
     t = await coll.find_one({"_id": oid(body.target_id)})
     if not t:
         raise HTTPException(404, "Contenuto non trovato")
-    if await db.reports.find_one({"target_id": body.target_id, "by_user": user.username, "status": "open"}):
+    if await db.reports.find_one({"target_id": body.target_id, "voter": voter, "status": "open"}):
         return {"ok": True}
     await db.reports.insert_one({"target_type": body.target_type, "target_id": body.target_id, "title": t.get("title", ""), "reason": body.reason,
-                                 "by_user": user.username, "status": "open", "created_at": iso_now()})
+                                 "by_user": ident["user"].username if ident["user"] else "ospite", "voter": voter,
+                                 "status": "open", "created_at": iso_now()})
     return {"ok": True}
 
 
@@ -1162,6 +1188,8 @@ async def register(body: RegisterIn):
     u = User(username=username, email=email, password_hash=hash_pw(body.password))
     res = await db.users.insert_one({**u.to_mongo(), "username_lower": username.lower()})
     u.id = str(res.inserted_id)
+    if body.newsletter:
+        await db.newsletter.update_one({"email": email}, {"$set": {"email": email, "user_id": u.id}, "$setOnInsert": {"created_at": iso_now()}}, upsert=True)
     return {"token": make_token(u.id, u.role, "access", 24 * 30), "user": user_out(u)}
 
 
@@ -1291,7 +1319,6 @@ async def edit_my_post(pid: str, body: PostIn, user: User = Depends(require_memb
     if sec.get("requires_approval"):
         upd["status"] = "pending"
     await db.posts.update_one({"_id": d["_id"]}, {"$set": upd})
-    schedule_moderation("posts", d["_id"])
     return {"ok": True, "status": upd.get("status", d["status"])}
 
 
@@ -1317,7 +1344,6 @@ async def edit_my_item(item_id: str, body: ItemIn, user: User = Depends(require_
     res = await db.items.update_one({"_id": oid(item_id), "created_by": f"u:{user.id}"}, {"$set": {**data, "status": "pending", "reject_reason": ""}})
     if not res.matched_count:
         raise HTTPException(404, "Elemento non trovato")
-    schedule_moderation("items", oid(item_id))
     return {"ok": True}
 
 
@@ -1332,8 +1358,7 @@ async def submit_item(body: ItemIn, user: User = Depends(require_member)):
     data = body.model_dump()
     validate_item(data)
     await clean_themes(data)
-    res = await db.items.insert_one(Item(**data, status="pending", created_by=f"u:{user.id}").to_mongo())
-    schedule_moderation("items", res.inserted_id)
+    await db.items.insert_one(Item(**data, status="pending", created_by=f"u:{user.id}").to_mongo())
     return {"ok": True}
 
 
@@ -1355,9 +1380,9 @@ async def admin_items(kind: str = "", status: str = "approved", a=Depends(requir
     query = {}
     if kind:
         query["kind"] = kind
-    if status in ("approved", "pending", "rejected"):
+    if status in ("approved", "pending", "rejected", "archived"):
         query["status"] = status
-    items = [Item.from_mongo(d) for d in await db.items.find(query).sort("created_at", -1).to_list(2000)]
+    items = [Item.from_mongo(d) for d in await db.items.find(query).sort("start_date" if status == "archived" else "created_at", -1).to_list(2000)]
     return [clean(p) for p in await present(items, admin=True)]
 
 
@@ -1495,11 +1520,6 @@ async def admin_delete_post(pid: str, a=Depends(require_admin)):
     return {"ok": True}
 
 
-@api.get("/admin/replies")
-async def admin_replies(a=Depends(require_admin)):
-    return [doc_out(d) for d in await db.post_replies.find().sort("created_at", -1).to_list(1000)]
-
-
 @api.get("/admin/reports")
 async def admin_reports(status: str = "open", a=Depends(require_admin)):
     return [doc_out(d) for d in await db.reports.find({"status": status}).sort("created_at", -1).to_list(500)]
@@ -1512,7 +1532,7 @@ class ReportActionIn(BaseModel):
 @api.post("/admin/reports/{rid}/action")
 async def admin_report_action(rid: str, body: ReportActionIn, a=Depends(require_admin)):
     r = await db.reports.find_one({"_id": oid(rid)})
-    if not r or body.action not in ("hide", "ignore", "block"):
+    if not r or body.action not in ("hide", "ignore", "block", "resolve"):
         raise HTTPException(404, "Segnalazione non trovata")
     coll = db.items if r["target_type"] == "item" else db.posts
     if body.action in ("hide", "block"):
@@ -1584,7 +1604,8 @@ async def admin_audit(a=Depends(require_super)):
     return [doc_out(d) for d in await db.audit.find().sort("at", -1).to_list(300)]
 
 
-BACKUP_COLLS = ["themes", "items", "posts", "categories", "sections", "polls", "banners", "config", "users", "post_replies", "reports"]
+BACKUP_COLLS = ["themes", "items", "posts", "categories", "sections", "polls", "banners", "config", "users", "post_replies", "reports",
+                "fuel_stations", "city_info", "proposals", "contacts", "newsletter"]
 
 
 @api.get("/admin/backup")
@@ -1635,272 +1656,6 @@ async def admin_stats(a=Depends(require_admin)):
             "votes_active": await db.votes.count_documents({"expires_at": {"$gt": now_utc()}}),
             "pending": await db.items.count_documents({"status": "pending"}) + await db.posts.count_documents({"status": "pending"}),
             "reports_open": await db.reports.count_documents({"status": "open"})}
-
-
-# ---------- AI (Gemini) ----------
-GEMINI_MODEL = ("gemini", "gemini-3-flash-preview")
-DRAFT_SEP = "<<<BOZZA>>>"
-AI_TASKS = set()
-URL_RE = re.compile(r"https?://[^\s<>\"']+")
-
-
-def new_chat(session: str, system: str):
-    return LlmChat(api_key=os.environ["EMERGENT_LLM_KEY"], session_id=session, system_message=system).with_model(*GEMINI_MODEL)
-
-
-def user_msg(text, images=None):
-    return UserMessage(text=text, file_contents=[ImageContent(image_base64=b) for b in images]) if images else UserMessage(text=text)
-
-
-async def llm_collect(session, system, text, images=None):
-    out = []
-    async for ev in new_chat(session, system).stream_message(user_msg(text, images)):
-        if isinstance(ev, TextDelta):
-            out.append(ev.content)
-        elif isinstance(ev, StreamDone):
-            break
-    return "".join(out)
-
-
-def parse_json(raw: str):
-    m = re.search(r"\{.*\}", raw or "", re.S)
-    if not m:
-        return None
-    try:
-        return json.loads(m.group(0))
-    except ValueError:
-        return None
-
-
-MOD_SYSTEM = (
-    "Sei il moderatore di 'Cosa Fare a Potenza', app per giovani e studenti di Potenza. Valuta il contenuto inviato da un utente. "
-    "Rischi da segnalare: dati personali di terzi (numeri di telefono, indirizzi privati, nome e cognome completi di persone descritte negli Spotted), "
-    "insulti, molestie, body shaming, contenuti sessuali espliciti, riferimenti a minori in contesti inappropriati, discriminazione, droga, violenza, "
-    "spam, truffe o annunci di lavoro/affitto sospetti. Un contenuto normale e innocuo è 'low'. "
-    "Rispondi SOLO con JSON: {\"risk\": \"low|medium|high\", \"reasons\": [\"motivo breve in italiano\", ...], \"summary\": \"una frase\"}"
-)
-
-
-def content_text(coll, d):
-    if coll == "posts":
-        return f"Sezione: {d.get('section')}\nEtichetta: {d.get('tag')}\n" + "\n".join(f"{k}: {v}" for k, v in (d.get("data") or {}).items() if v)
-    keys = ("kind", "title", "category", "town", "zone", "address", "description", "price", "instagram", "info_link")
-    return "\n".join(f"{k}: {d.get(k)}" for k in keys if d.get(k))
-
-
-async def ai_moderate(coll: str, _id):
-    d = await db[coll].find_one({"_id": _id})
-    if not d:
-        return None
-    try:
-        j = parse_json(await llm_collect(f"mod-{_id}-{uuid.uuid4().hex[:6]}", MOD_SYSTEM, content_text(coll, d))) or {}
-    except Exception as e:
-        logger.warning(f"AI moderation failed: {e}")
-        return None
-    risk = j.get("risk") if j.get("risk") in ("low", "medium", "high") else "medium"
-    review = {"risk": risk, "reasons": [str(r)[:160] for r in (j.get("reasons") or [])][:5], "summary": str(j.get("summary", ""))[:240], "at": iso_now()}
-    upd = {"ai_review": review}
-    if coll == "posts" and risk == "high" and d.get("status") == "approved" and d.get("owner_user"):
-        upd.update(status="pending", ai_held=True)
-    await db[coll].update_one({"_id": _id}, {"$set": upd})
-    return review
-
-
-def schedule_moderation(coll, _id):
-    t = asyncio.create_task(ai_moderate(coll, _id))
-    AI_TASKS.add(t)
-    t.add_done_callback(AI_TASKS.discard)
-
-
-@api.post("/admin/ai/moderate/{entity}/{eid}")
-async def admin_ai_moderate(entity: str, eid: str, a=Depends(require_admin)):
-    coll = {"item": "items", "post": "posts"}.get(entity)
-    if not coll:
-        raise HTTPException(404, "Non trovato")
-    review = await ai_moderate(coll, oid(eid))
-    if not review:
-        raise HTTPException(502, "Analisi AI non disponibile, riprova")
-    return review
-
-
-async def public_url(url: str) -> bool:
-    try:
-        p = urlparse(url)
-        if p.scheme not in ("http", "https") or not p.hostname or p.username or p.password:
-            return False
-        infos = await run_in_threadpool(socket.getaddrinfo, p.hostname, p.port or (443 if p.scheme == "https" else 80))
-        return bool(infos) and all(ipaddress.ip_address(x[4][0]).is_global for x in infos)
-    except Exception:
-        return False
-
-
-async def safe_get(url: str, timeout=8):
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, headers={"User-Agent": "Mozilla/5.0 (compatible; CosaFarePotenzaBot/1.0)"}) as c:
-        for _ in range(4):
-            if not await public_url(url):
-                return None
-            r = await c.get(url)
-            if r.is_redirect and r.headers.get("location"):
-                url = urljoin(url, r.headers["location"])
-                continue
-            return r if len(r.content) < 8 * 1024 * 1024 else None
-    return None
-
-
-async def fetch_link(url: str):
-    try:
-        r = await safe_get(url)
-        if r is None:
-            return None
-        html = r.text[:400_000]
-    except Exception:
-        return None
-    meta = lambda p: (re.search(rf'<meta[^>]+(?:property|name)=["\']{p}["\'][^>]+content=["\']([^"\']*)', html, re.I) or [None, ""])[1]
-    title = (re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S) or [None, ""])[1]
-    body = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.S | re.I)))
-    return {"url": url, "title": title.strip()[:200], "description": (meta("og:description") or meta("description"))[:1500],
-            "image": meta("og:image"), "text": body.strip()[:3500]}
-
-
-async def image_b64(url: str):
-    try:
-        if url.startswith("/api/files/"):
-            path = url[len("/api/files/"):]
-            if not await db.files.find_one({"storage_path": path, "is_deleted": False}):
-                return None
-            data, _ = await run_in_threadpool(get_object, path)
-        else:
-            r = await safe_get(url, timeout=10)
-            if r is None or not r.headers.get("content-type", "").startswith("image/"):
-                return None
-            data = r.content
-        return base64.b64encode(data).decode() if len(data) < 6 * 1024 * 1024 else None
-    except Exception as e:
-        logger.warning(f"AI image fetch failed: {e}")
-        return None
-
-
-async def assistant_system():
-    cats = [{"slug": c["slug"], "nome": c["name"], "con_data": c.get("dated", False), "sottocategorie": c.get("subcategories", [])}
-            async for c in db.categories.find({"hidden": {"$ne": True}}).sort("order", 1)]
-    secs = [{"slug": s["slug"], "nome": s["name"], "etichette": s.get("tags", []),
-             "campi": [{"key": f["key"], "label": f["label"], "tipo": f["type"], "obbligatorio": f.get("required", False), "opzioni": f.get("options", [])} for f in s.get("fields", []) if f.get("key")]}
-            async for s in db.sections.find({"hidden": {"$ne": True}}).sort("order", 1)]
-    themes = [t["slug"] async for t in db.themes.find({"hidden": {"$ne": True}})]
-    c = await get_config()
-    now = datetime.now(ROME)
-    return (
-        "Sei 'Lucy', l'assistente simpatica e alla mano dell'app 'Cosa Fare a Potenza' (Potenza e provincia, Basilicata). Parli in italiano, tono amichevole, frasi brevi, qualche emoji. "
-        "Aiuti l'utente a pubblicare un contenuto: lui ti incolla un testo, un link (es. post Instagram) o una foto di una locandina e tu riconosci tutto e prepari la bozza. "
-        "Se mancano dati importanti (es. la data di un evento) chiedili gentilmente. Non inventare MAI dati non presenti: lascia vuoto. "
-        f"Oggi è {now.strftime('%A %d/%m/%Y')} (ora italiana). Converti date relative in YYYY-MM-DD e orari in HH:MM.\n"
-        f"CATEGORIE ESPLORA (target='item'): {json.dumps(cats, ensure_ascii=False)}\n"
-        "Campi item: title, category (una delle sottocategorie), town, zone, address, description, start_date, start_time, end_time (solo categorie con_data), "
-        f"opening_hours, price, instagram, info_link, image_url, themes (lista tra {themes}).\n"
-        f"SEZIONI BACHECA (target='post', es. spotted, case, lavoro, passaggi): {json.dumps(secs, ensure_ascii=False)}\n"
-        f"Comuni: {[t['name'] for t in c['towns']]}. Zone di Potenza: {[z['name'] for z in c['zones']]}.\n"
-        "FORMATO RISPOSTA OBBLIGATORIO: prima il tuo messaggio per l'utente (max 4 frasi, riassumi cosa hai capito e cosa manca), poi su una riga a parte "
-        f"esattamente {DRAFT_SEP} seguito da un JSON: "
-        "{\"target\": \"item\"|\"post\"|null, \"kind\": \"slug ESATTO della categoria (es. event, venue) o null\", \"section\": \"slug sezione o null\", \"tag\": \"\", \"fields\": {...}, \"missing\": [\"campi obbligatori mancanti\"]}. "
-        "Per i post usa come chiavi di 'fields' le key dei campi della sezione. Se non c'è ancora abbastanza per capire cosa pubblicare, target null."
-    )
-
-
-ITEM_KEYS = set(ItemIn.model_fields)
-
-
-async def clean_draft(d):
-    if not isinstance(d, dict) or d.get("target") not in ("item", "post"):
-        return None
-    f = d.get("fields") if isinstance(d.get("fields"), dict) else {}
-    if d["target"] == "item":
-        k = str(d.get("kind") or "").strip().lower()
-        if k not in KINDS:
-            sub = str(f.get("category") or k).lower()
-            async for c in db.categories.find({"hidden": {"$ne": True}}):
-                if k in (c["name"].lower(), c.get("plural", "").lower()) or sub in [x.lower() for x in c.get("subcategories", [])]:
-                    k = c["slug"]
-                    break
-        if k not in KINDS or k in HIDDEN_CATS:
-            return None
-        d["kind"] = k
-        fields = {k: (v if k == "themes" else str(v or "")) for k, v in f.items() if k in ITEM_KEYS and k != "kind"}
-        if "themes" in fields:
-            await clean_themes(fields)
-        miss = [x for x in ("title", "start_date" if k in DATED else "") if x and not fields.get(x)]
-        return {"target": "item", "kind": d["kind"], "fields": fields, "missing": miss}
-    sec = await db.sections.find_one({"slug": d.get("section"), "hidden": {"$ne": True}})
-    if not sec:
-        return None
-    keys = {x["key"] for x in sec.get("fields", []) if x.get("key")}
-    return {"target": "post", "section": sec["slug"], "tag": d.get("tag") if d.get("tag") in sec.get("tags", []) else "",
-            "fields": {k: str(v or "") for k, v in f.items() if k in keys},
-            "missing": [x["label"] for x in sec.get("fields", []) if x.get("required") and not str(f.get(x.get("key")) or "").strip()]}
-
-
-class AssistantIn(BaseModel):
-    session_id: str = Field(min_length=6, max_length=64)
-    message: str = Field(default="", max_length=4000)
-    image_url: str = ""
-
-
-@api.post("/ai/assistant")
-async def ai_assistant(body: AssistantIn, user: User = Depends(require_member)):
-    if not body.message.strip() and not body.image_url:
-        raise HTTPException(422, "Scrivi un messaggio, incolla un link o allega una locandina")
-    conv = await db.ai_chats.find_one({"session_id": body.session_id, "user_id": user.id}) or {"messages": [], "draft": None}
-    links = [x for x in [await fetch_link(u) for u in URL_RE.findall(body.message)[:2]] if x]
-    images = [b for b in [await image_b64(body.image_url)] if b] if body.image_url else []
-    if links and links[0].get("image") and not images:
-        images = [b for b in [await image_b64(links[0]["image"])] if b]
-    history = "\n".join(f"{'Utente' if m['role'] == 'user' else 'Lucy'}: {m['text']}" for m in conv["messages"][-10:])
-    prompt = (f"Conversazione finora:\n{history}\n\n" if history else "") + (f"Bozza attuale: {json.dumps(conv.get('draft'), ensure_ascii=False)}\n\n" if conv.get("draft") else "")
-    prompt += f"Nuovo messaggio dell'utente: {body.message or '(ha inviato solo una foto)'}"
-    if links:
-        prompt += "\n\nContenuto dei link (letto automaticamente, può essere parziale):\n" + "\n".join(json.dumps(l, ensure_ascii=False) for l in links)
-    if images:
-        prompt += "\n\nÈ allegata un'immagine (locandina/foto): leggila con attenzione, inclusi date, orari, luogo e prezzi."
-    poster = body.image_url or (links[0]["image"] if links and links[0].get("image") and images else "")
-    system = await assistant_system()
-
-    async def gen():
-        buf, shown, full = "", 0, []
-        try:
-            async for ev in new_chat(f"as-{body.session_id}-{len(conv['messages'])}", system).stream_message(user_msg(prompt, images)):
-                if isinstance(ev, StreamDone):
-                    break
-                if not isinstance(ev, TextDelta):
-                    continue
-                full.append(ev.content)
-                buf = "".join(full)
-                cut = buf.find(DRAFT_SEP)
-                safe = cut if cut >= 0 else max(shown, len(buf) - len(DRAFT_SEP))
-                if safe > shown:
-                    yield f"data: {json.dumps({'t': 'delta', 'c': buf[shown:safe]})}\n\n"
-                    shown = safe
-        except Exception as e:
-            logger.error(f"AI assistant failed: {e}")
-            yield f"data: {json.dumps({'t': 'error', 'c': 'Lucy non è disponibile in questo momento, riprova tra poco.'})}\n\n"
-            return
-        buf = "".join(full)
-        reply, _, tail = buf.partition(DRAFT_SEP)
-        if not _ and shown < len(buf):
-            yield f"data: {json.dumps({'t': 'delta', 'c': buf[shown:]})}\n\n"
-        draft = await clean_draft(parse_json(tail)) if tail else None
-        if draft and poster and draft["target"] == "item" and not draft["fields"].get("image_url"):
-            draft["fields"]["image_url"] = poster
-        if draft and poster and draft["target"] == "post":
-            pk = next((x["key"] for x in (await db.sections.find_one({"slug": draft["section"]}) or {}).get("fields", []) if x.get("type") == "photo"), None)
-            if pk and not draft["fields"].get(pk):
-                draft["fields"][pk] = poster
-        draft = draft or conv.get("draft")
-        msgs = conv["messages"] + [{"role": "user", "text": body.message or "📷 locandina", "image_url": body.image_url, "at": iso_now()},
-                                   {"role": "assistant", "text": reply.strip(), "at": iso_now()}]
-        await db.ai_chats.update_one({"session_id": body.session_id, "user_id": user.id},
-                                     {"$set": {"messages": msgs[-30:], "draft": draft, "updated_at": iso_now()}}, upsert=True)
-        yield f"data: {json.dumps({'t': 'done', 'draft': draft})}\n\n"
-
-    return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # ---------- startup ----------
@@ -1979,6 +1734,8 @@ async def startup():
     except Exception as e:
         logger.error(f"Storage init failed: {e}")
 
+
+import v3  # noqa: E402,F401
 
 app.include_router(api)
 app.add_middleware(

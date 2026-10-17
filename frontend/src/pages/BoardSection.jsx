@@ -37,6 +37,16 @@ export default function BoardSection() {
       toast.error(errMsg(e));
     }
   };
+  const save = async (id) => {
+    try {
+      const p = (await api.post(`/posts/${id}/save`)).data;
+      qc.setQueryData(key, (old) => ({ ...old, posts: old.posts.map((x) => (x.id === id ? { ...x, saved: p.saved } : x)) }));
+      qc.invalidateQueries({ queryKey: ["saved-posts"] });
+      toast.success(p.saved ? "Salvato ⭐" : "Rimosso dai salvati");
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
   const posts = focus && data ? [...data.posts].sort((a, b) => (b.id === focus) - (a.id === focus)) : data?.posts;
 
   if (isError) return <p data-testid="section-not-found" className="px-5 pt-16 text-center text-zinc-400">Sezione non disponibile.</p>;
@@ -69,8 +79,8 @@ export default function BoardSection() {
         {isLoading && <Loader2 className="mx-auto h-6 w-6 animate-spin text-pink-400" />}
         {posts?.length === 0 && <p data-testid="posts-empty" className="rounded-2xl border border-dashed border-white/10 py-10 text-center text-sm text-zinc-500">Nessun annuncio qui… per ora 👀</p>}
         {posts?.map((p, i) => (
-          <PostCard key={p.id} p={p} section={s} index={i} highlight={p.id === focus} onReact={react}
-            onReply={(x) => needUser(() => setReplyTo(x))} onReport={(x) => needUser(() => setReport({ type: "post", id: x.id, title: x.title }))} />
+          <PostCard key={p.id} p={p} section={s} index={i} highlight={p.id === focus} onReact={react} onSave={save}
+            onReply={(x) => needUser(() => setReplyTo(x))} onReport={(x) => setReport({ type: "post", id: x.id, title: x.title })} />
         ))}
       </div>
       <ReplySheet post={replyTo} label={s?.reply_label} onClose={() => setReplyTo(null)} />
