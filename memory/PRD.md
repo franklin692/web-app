@@ -37,3 +37,11 @@ v2 (approved plan "Cosa Fare a Potenza 2.0"): Bacheca with configurable sections
 ## Backlog
 - P1: Newsletter sending from platform; notifications for Seguiti; moderation of false live reports
 - P2: Official fuel price import (MIMIT open data); map with live reports & stations; venue pages with stats
+
+## v3.1 (Oct 2026)
+- Fix: Spotlight list public to all (guests read-only), auto-refresh 30s; item live reports include zone reports; tz-aware timestamps.
+- Bottom nav: Esplora · Info · Vivi (center) · Bacheca · Profilo; sticky TopBar with "＋ Pubblica" (+ buttons in Bacheca/Vivi/Info).
+- New Info hub (/info): Promozioni & Volantini (/info/promo, user proposals pending until admin sets Visibile), Benzina, Info Utili (+Numeri utili), Live (/info/live).
+- Add sheet: 3 group cards (Vivi / Bacheca / Info-Promo-Segnalazioni).
+- Spotted = message only (migration); Explore block "📌 Dalla Bacheca (I più cliccati)" with unique view counter (/api/board-top, /api/posts/{id}/view).
+- Tests iteration_6: backend 52/52, frontend flows 100%.

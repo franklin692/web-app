@@ -104,7 +104,7 @@ class TestBoard:
         assert "owner_user" not in b["posts"][0]
         assert len(requests.get(f"{BASE_URL}/board/passaggi?tag=Offro%20passaggio&q=TEST_Potenza").json()["posts"]) == 1
         assert len(requests.get(f"{BASE_URL}/board/passaggi?tag=Cerco%20passaggio&q=TEST_Potenza").json()["posts"]) == 0
-        r = requests.post(f"{BASE_URL}/board/spotted/posts", headers=H(ctx["alice"]), json={"data": {"where": "TEST_Unibas", "message": "ciao bella"}})
+        r = requests.post(f"{BASE_URL}/board/spotted/posts", headers=H(ctx["alice"]), json={"data": {"message": "TEST_Unibas ciao bella"}})
         assert r.json()["status"] == "pending"
         assert len(requests.get(f"{BASE_URL}/board/spotted?q=TEST_Unibas").json()["posts"]) == 0
 
@@ -144,7 +144,7 @@ class TestLifecycle:
         # approve then edit -> back to pending
         requests.post(f"{BASE_URL}/admin/posts/{sp['id']}/status", headers=H(ctx["admin"]), json={"status": "approved"})
         assert len(requests.get(f"{BASE_URL}/board/spotted?q=TEST_Unibas").json()["posts"]) == 1
-        r = requests.put(f"{BASE_URL}/me/posts/{sp['id']}", headers=H(ctx["alice"]), json={"data": {"where": "TEST_Unibas2", "message": "edit msg"}})
+        r = requests.put(f"{BASE_URL}/me/posts/{sp['id']}", headers=H(ctx["alice"]), json={"data": {"message": "edit msg"}})
         assert r.json()["status"] == "pending"
         assert len(requests.get(f"{BASE_URL}/board/spotted?q=TEST_Unibas").json()["posts"]) == 0
         # passaggi edit stays approved

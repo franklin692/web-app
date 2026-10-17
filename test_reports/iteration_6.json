@@ -1,0 +1,32 @@
+{
+  "summary": "v3.1 tested end-to-end (backend pytest 52/52 after test updates + Playwright at 390x844 in multiple browser contexts). Cross-user Spotlight and live reports work: user A 'Ci sono ORA' + Spotlight toggle is visible right away to a guest context (read-only, with spotlight-guest-hint; wave opens the 'Accedi per continuare' prompt) and to user B (B's wave works, the button turns disabled and A's inbox gets the wave). A live report made from item detail shows up in item live section, Explore Potenza Live box and /info/live for guest and B. B's confirm gives 'Confermato ✓1'. created_at has +00:00. GET /api/live/reports?item_id&zone returns item reports plus zone-only reports. Without zone it returns only item reports. Bottom nav order is right (explore, info, vivi center, board, profile). The top bar and publish buttons (top/board/vivi/info) open the add sheet, and a guest gets the login prompt. Add sheet: 3 groups with the right subcategories, back works, info quick actions work (live form, fuel goes to /info-utili?tab=fuel, promo form). Info tiles go to the right routes, there are 3 seeded promos and Numeri utili is shown. A user's promo proposal stays pending and hidden until admin sets it Visibile in Promo, Benzina & Info -> Promo, then it is public. Spotted form has only Messaggio and the card shows only the message. board-top section has 5 posts with view counters, sorted by views, and the link goes to /bacheca. Post view counts once per visitor. vivi-utility-tile is absent. No horizontal overflow at 390px. FOUND AND FIXED: the top bar was NOT fixed and Explore sticky filters did not stick (they scrolled away), because the .app-frame wrapper had overflow-x-hidden, which turns it into a scroll container (overflow-y computed auto). I changed it to overflow-x-clip in App.js. Verified: top bar stays at top 0 on all pages and the Explore filters stick at 48px directly under it.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "PUT /api/admin/simple/promo/{id}", "issue": "The 'pending' flag is not in SIMPLE allowed fields, so it stays true in the DB after admin makes the promo visible. Harmless now (UI uses hidden), but the data is inconsistent."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "App.js .app-frame", "issue": "overflow-x-hidden broke position:sticky for top-bar and Explore filters (they scrolled away). FIXED by testing agent -> overflow-x-clip", "selector": "[data-testid=top-bar]", "priority": "HIGH (fixed)"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Bacheca / Add sheet board group", "issues": ["A 'Prezzi Benzina' board section (0 annunci) is still listed in Bacheca and in the add-sheet Bacheca subcategories, which duplicates the new Info -> Prezzi Benzina flow. Consider hiding it."]},
+      {"screen": "Explore filter chips", "issues": ["A 'Benzina & Info' chip is still shown in the Explore filters; check that this is wanted now that the Info tab exists."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_v3_api.py", "/app/backend/tests/test_v2_api.py", "/app/backend/tests/test_vivi_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Optional: hide the 'prezzi-benzina' board section (and its add-sheet entry) to avoid duplicating Info -> Prezzi Benzina",
+    "Optional: clear the 'pending' flag when admin makes a promo visible"
+  ],
+  "critical_code_review_comments": [
+    "Never use overflow-x-hidden on an ancestor of sticky elements; use overflow-x-clip (already applied).",
+    "LiveRow test ids repeat when Explore background and the item sheet both render the same report (live-report-{id} count 2 on /item/:id). Fine for users; tests should scope to the sheet."
+  ],
+  "updated_files": ["/app/frontend/src/App.js", "/app/backend/tests/test_v3_api.py", "/app/backend/tests/test_v2_api.py"],
+  "success_rate": {"backend": "100% (52/52)", "frontend": "100% of requested flows after the sticky fix"},
+  "seed_data_creation": "None kept. TEST_ users, live reports, spotlight, promos and spotted posts were deleted. The views on one seeded spotted post were reset to 0.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with: export $(grep BACKEND frontend/.env); pytest backend/tests -n 0. test_v3_api.py now asserts guest GET spotlight -> 200 read-only, and has a TestV31 class (live zone/tz cross-user, spotlight guest, promos pending/approve, spotted message-only + views/board-top). The spotted section requires_approval=true, so the test approves via Mongo. In v2 tests the spotted posts now use only the message field.",
+  "rca of the issue": "Top bar and sticky filters scrolled away: .app-frame had overflow-x:hidden, which per the CSS spec forces overflow-y:auto. That makes the frame the sticky containing scroll box, but the window is what actually scrolls, so sticky never kicks in. Fix: overflow-x:clip, which does not create a scroll container."
+}

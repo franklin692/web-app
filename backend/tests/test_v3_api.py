@@ -85,7 +85,8 @@ class TestHomeLive:
 class TestSpotlight:
     def test_spotlight_flow(self, ctx):
         vid = ctx["venue"]["id"]
-        assert requests.get(f"{BASE_URL}/items/{vid}/spotlight").status_code == 401
+        gs = requests.get(f"{BASE_URL}/items/{vid}/spotlight")  # v3.1: public read-only for guests
+        assert gs.status_code == 200 and gs.json()["can_join"] is False and isinstance(gs.json()["people"], list)
         assert requests.post(f"{BASE_URL}/items/{vid}/spotlight", headers=H(ctx["a"]), json={"status": "x"}).status_code == 400
         v = requests.post(f"{BASE_URL}/items/{vid}/vote", headers=H(ctx["a"]), json={"type": "here"}).json()
         assert v["my_vote"] == "here"
@@ -240,3 +241,77 @@ class TestMisc:
         assert requests.post(f"{BASE_URL}/ai/assistant", headers=H(ctx["a"]), json={"message": "hi"}).status_code in (404, 405)
         assert requests.post(f"{BASE_URL}/admin/ai/moderate/item/abc", headers=H(ctx["admin"])).status_code in (404, 405)
         assert requests.get(f"{BASE_URL}/admin/replies", headers=H(ctx["admin"])).status_code in (404, 405)
+
+
+# v3.1: cross-user visibility (live + spotlight), promos, board-top/views, spotted message-only
+class TestV31:
+    def test_live_cross_user_zone_and_tz(self, ctx):
+        v = ctx["venue"]
+        zone = v.get("zone") or v.get("town")
+        r_item = requests.post(f"{BASE_URL}/live/reports", headers=H(ctx["a"]), json={"tag": "fila", "item_id": v["id"], "note": "TEST31"}).json()
+        r_zone = requests.post(f"{BASE_URL}/live/reports", headers=H(ctx["a"]), json={"tag": "pieno", "zone": zone, "note": "TEST31z"}).json()
+        assert r_item["zone"] == zone and "+00:00" in r_item["created_at"]
+        guest = requests.get(f"{BASE_URL}/live/reports", params={"item_id": v["id"], "zone": zone}).json()["reports"]
+        ids = {x["id"] for x in guest}
+        assert r_item["id"] in ids and r_zone["id"] in ids
+        assert all("+00:00" in x["created_at"] or x["created_at"].endswith("Z") for x in guest)
+        # without zone param only item reports
+        only = {x["id"] for x in requests.get(f"{BASE_URL}/live/reports", params={"item_id": v["id"]}).json()["reports"]}
+        assert r_item["id"] in only and r_zone["id"] not in only
+        # global list (Explore/Info live) visible to guest & other user
+        allg = {x["id"] for x in requests.get(f"{BASE_URL}/live/reports?limit=50").json()["reports"]}
+        assert r_item["id"] in allg
+        b = requests.get(f"{BASE_URL}/live/reports", headers=H(ctx["b"]), params={"item_id": v["id"], "zone": zone}).json()["reports"]
+        mine = [x for x in b if x["id"] == r_item["id"]][0]
+        assert mine["mine"] is False
+        c = requests.post(f"{BASE_URL}/live/reports/{r_item['id']}/confirm", headers=H(ctx["b"])).json()
+        assert c["confirms_count"] == 1 and c["confirmed"]
+
+    def test_spotlight_guest_sees_other_user(self, ctx):
+        vid = ctx["venue"]["id"]
+        requests.post(f"{BASE_URL}/items/{vid}/vote", headers=H(ctx["a"]), json={"type": "here"})
+        assert requests.post(f"{BASE_URL}/items/{vid}/spotlight", headers=H(ctx["a"]), json={"status": "TEST31 status"}).status_code == 200
+        g = requests.get(f"{BASE_URL}/items/{vid}/spotlight", headers=H(dev=f"TEST-dev31-{RUN}"))
+        assert g.status_code == 200
+        p = [x for x in g.json()["people"] if x["username"] == ctx["a_name"]]
+        assert p and p[0]["status"] == "TEST31 status" and not p[0]["me"]
+        assert requests.post(f"{BASE_URL}/spotlight/{p[0]['id']}/wave", headers=H(dev=f"TEST-dev31-{RUN}"), json={}).status_code == 401
+
+    def test_promos_seed_and_pending(self, ctx):
+        pr = requests.get(f"{BASE_URL}/promos").json()
+        assert len(pr) >= 3 and all(x.get("title") and x.get("business") for x in pr)
+        body = {"title": f"TEST_Promo_{RUN}", "business": "TEST biz", "description": "x"}
+        assert requests.post(f"{BASE_URL}/promos", json=body).status_code == 401
+        r = requests.post(f"{BASE_URL}/promos", headers=H(ctx["a"]), json=body)
+        assert r.status_code == 200 and r.json()["status"] == "pending"
+        assert not any(x["title"] == body["title"] for x in requests.get(f"{BASE_URL}/promos").json())
+        adm = requests.get(f"{BASE_URL}/admin/simple/promo", headers=H(ctx["admin"])).json()
+        mine = [x for x in adm if x["title"] == body["title"]][0]
+        u = requests.put(f"{BASE_URL}/admin/simple/promo/{mine['id']}", headers=H(ctx["admin"]), json={**body, "hidden": False})
+        assert u.status_code == 200, u.text
+        assert any(x["title"] == body["title"] for x in requests.get(f"{BASE_URL}/promos").json())
+        requests.delete(f"{BASE_URL}/admin/simple/promo/{mine['id']}", headers=H(ctx["admin"]))
+        assert not any(x["title"] == body["title"] for x in requests.get(f"{BASE_URL}/promos").json())
+
+    def test_spotted_views_board_top(self, ctx):
+        msg = f"TEST_spotted msg {RUN}"
+        r = requests.post(f"{BASE_URL}/board/spotted/posts", headers=H(ctx["a"]), json={"data": {"message": msg}})
+        assert r.status_code == 200, r.text
+        MDB.posts.update_one({"data.message": msg}, {"$set": {"status": "approved"}})  # spotted requires approval
+        posts = requests.get(f"{BASE_URL}/board/spotted?q={RUN}").json()["posts"]
+        p = [x for x in posts if x.get("data", {}).get("message") == msg][0]
+        assert set(p["data"].keys()) <= {"message"}
+        assert p["title"].startswith("TEST_spotted")
+        pid = p["id"]
+        dev = f"TEST-devv-{RUN}"
+        for _ in range(2):
+            assert requests.post(f"{BASE_URL}/posts/{pid}/view", headers=H(dev=dev)).status_code == 200
+        requests.post(f"{BASE_URL}/posts/{pid}/view", headers=H(ctx["b"]))
+        assert MDB.posts.find_one({"title": p["title"]})["views"] == 2
+        assert requests.post(f"{BASE_URL}/posts/{pid}/view").status_code in (400, 401, 422)
+        top = requests.get(f"{BASE_URL}/board-top").json()
+        assert 1 <= len(top) <= 5 and all("views" in x and "section_name" in x for x in top)
+        vs = [x["views"] for x in top]
+        assert vs == sorted(vs, reverse=True)
+        MDB.posts.delete_many({"title": p["title"]})
+        MDB.post_views.delete_many({"post_id": pid})

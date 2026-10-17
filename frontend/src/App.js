@@ -45,7 +45,7 @@ function Shell() {
   }, [user]);
   return (
     <div className="min-h-screen bg-[#050507]">
-      <div className="app-frame relative mx-auto min-h-screen w-full max-w-md overflow-x-hidden bg-[#0B0B0F] pb-32 text-zinc-100 md:border-x md:border-white/5">
+      <div className="app-frame relative mx-auto min-h-screen w-full max-w-md overflow-x-clip bg-[#0B0B0F] pb-32 text-zinc-100 md:border-x md:border-white/5">
         <div className="grain pointer-events-none fixed inset-0 z-0 mx-auto max-w-md" />
         <TopBar />
         <main className="relative z-10">
