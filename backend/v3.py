@@ -1,7 +1,7 @@
 import csv
 import io
 import random
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -31,8 +31,13 @@ class LiveIn(BaseModel):
     note: str = Field(default="", max_length=200)
 
 
+def tz_iso(v):
+    return v.replace(tzinfo=v.tzinfo or timezone.utc).isoformat() if isinstance(v, datetime) else v
+
+
 def live_out(r, uid=None):
     o = doc_out(r)
+    o["created_at"], o["expires_at"] = tz_iso(r.get("created_at")), tz_iso(r.get("expires_at"))
     confirms = o.pop("confirms", [])
     owner = o.pop("user_id", None)
     o.update(confirms_count=len(confirms), confirmed=bool(uid) and uid in confirms, mine=bool(uid) and owner == uid,
@@ -41,11 +46,11 @@ def live_out(r, uid=None):
 
 
 @api.get("/live/reports")
-async def live_reports(request: Request, item_id: str = "", limit: int = 20):
+async def live_reports(request: Request, item_id: str = "", zone: str = "", limit: int = 20):
     ident = await get_identity(request)
     q = {"expires_at": {"$gt": now_utc()}}
     if item_id:
-        q["item_id"] = item_id
+        q["$or"] = [{"item_id": item_id}] + ([{"zone": zone, "item_id": {"$in": ["", None]}}] if zone else [])
     docs = await db.live_reports.find(q).sort("created_at", -1).to_list(min(max(limit, 1), 50))
     uid = ident["user"].id if ident["user"] else None
     return {"tags": LIVE_TAGS, "reports": [live_out(d, uid) for d in docs]}
@@ -108,14 +113,18 @@ async def here_vote(item_id, user):
 
 
 @api.get("/items/{item_id}/spotlight")
-async def get_spotlight(item_id: str, user: User = Depends(require_member)):
-    item_id = (await get_public_item(item_id)).id
+async def get_spotlight(item_id: str, request: Request):
+    return await spotlight_view((await get_public_item(item_id)).id, (await get_identity(request))["user"])
+
+
+async def spotlight_view(item_id, user):
     docs = await db.spotlight.find({"item_id": item_id, "expires_at": {"$gt": now_utc()}}).sort("created_at", -1).to_list(100)
     ids = [str(d["_id"]) for d in docs]
-    waved = {w["spot_id"] async for w in db.waves.find({"from_user": user.id, "spot_id": {"$in": ids}})}
+    uid = user.id if user else None
+    waved = {w["spot_id"] async for w in db.waves.find({"from_user": uid, "spot_id": {"$in": ids}})} if uid else set()
     people = [{"id": str(d["_id"]), "username": d["username"], "status": d.get("status", ""), "since": d["created_at"],
-               "me": d["user_id"] == user.id, "waved": str(d["_id"]) in waved} for d in docs]
-    return {"people": people, "can_join": await here_vote(item_id, user), "joined": any(p["me"] for p in people)}
+               "me": d["user_id"] == uid, "waved": str(d["_id"]) in waved} for d in docs]
+    return {"people": people, "can_join": bool(user) and await here_vote(item_id, user), "joined": any(p["me"] for p in people)}
 
 
 @api.post("/items/{item_id}/spotlight")
@@ -127,7 +136,7 @@ async def join_spotlight(item_id: str, body: SpotIn, user: User = Depends(requir
                                   {"$set": {"status": body.status.strip(), "username": user.username, "item_title": it.title,
                                             "expires_at": now_utc() + timedelta(hours=LIVE_HOURS)},
                                    "$setOnInsert": {"created_at": iso_now()}}, upsert=True)
-    return await get_spotlight(it.id, user)
+    return await spotlight_view(it.id, user)
 
 
 @api.delete("/items/{item_id}/spotlight")
@@ -235,6 +244,7 @@ async def city_info():
 
 
 SIMPLE = {"fuel": ("fuel_stations", {"name", "brand", "address", "zone", "prices", "hidden", "order"}),
+          "promo": ("promos", {"title", "business", "description", "image_url", "valid_until", "link", "zone", "hidden", "order"}),
           "info": ("city_info", {"title", "icon", "body", "link", "hidden", "order"})}
 
 
@@ -247,7 +257,9 @@ def simple_clean(coll, body):
         d["prices"] = {f: (round(float(p[f]), 3) if p.get(f) not in (None, "") else None) for f in FUEL}
         d["updated_at"] = iso_now()
         d["updated_by"] = "redazione"
-    for k in ("name", "brand", "address", "zone", "title", "icon", "body", "link"):
+    if coll == "promo" and d.get("hidden") is False:
+        d["pending"] = False
+    for k in ("name", "brand", "address", "zone", "title", "icon", "body", "link", "business", "description", "image_url", "valid_until"):
         if k in d:
             d[k] = str(d[k] or "").strip()[:2000]
     return d
@@ -284,6 +296,60 @@ async def simple_delete(coll: str, sid: str, a=Depends(require_admin)):
     await db[SIMPLE[coll][0]].delete_one({"_id": oid(sid)})
     await audit(a, f"elimina {coll}", sid)
     return {"ok": True}
+
+
+# ---------- Promozioni & Volantini ----------
+class PromoIn(BaseModel):
+    title: str = Field(min_length=2, max_length=120)
+    business: str = Field(min_length=2, max_length=80)
+    description: str = Field(default="", max_length=1000)
+    image_url: str = Field(default="", max_length=500)
+    valid_until: str = Field(default="", max_length=10)
+    link: str = Field(default="", max_length=300)
+    zone: str = Field(default="", max_length=80)
+
+
+@api.get("/promos")
+async def promos():
+    today = datetime.now(timezone.utc).date().isoformat()
+    q = {"hidden": {"$ne": True}, "$or": [{"valid_until": {"$in": ["", None]}}, {"valid_until": {"$gte": today}}]}
+    return [doc_out(d) for d in await db.promos.find(q).sort([("order", 1), ("_id", -1)]).to_list(200)]
+
+
+@api.post("/promos")
+async def create_promo(body: PromoIn, user: User = Depends(require_member)):
+    await throttle(f"promo:{user.id}", 5, 60)
+    admin = user.role in ("admin", "superadmin")
+    d = simple_clean("promo", body.model_dump())
+    d.update(hidden=not admin, pending=not admin, order=0, by_user=user.username, created_at=iso_now())
+    await db.promos.insert_one(d)
+    return {"ok": True, "status": "approved" if admin else "pending"}
+
+
+# ---------- Bacheca: i più cliccati ----------
+@api.post("/posts/{pid}/view")
+async def post_view(pid: str, request: Request):
+    voter = need_voter(await get_identity(request))
+    d = await public_post(pid)
+    try:
+        await db.post_views.insert_one({"post_id": pid, "voter": voter})
+        await db.posts.update_one({"_id": d["_id"]}, {"$inc": {"views": 1}})
+    except DuplicateKeyError:
+        pass
+    return {"ok": True}
+
+
+@api.get("/board-top")
+async def board_top(limit: int = 5):
+    secs = {s["slug"]: s async for s in db.sections.find({"hidden": {"$ne": True}})}
+    docs = await db.posts.find({**public_post_q(), "section": {"$in": list(secs)}}).sort([("views", -1), ("created_at", -1)]).to_list(min(max(limit, 1), 10))
+    out = []
+    for d in docs:
+        o = post_out(d)
+        o.update(views=d.get("views", 0), section_name=secs[d["section"]]["name"], section_color=secs[d["section"]].get("color", ""),
+                 section_icon=secs[d["section"]].get("icon", ""))
+        out.append(o)
+    return out
 
 
 # ---------- Proposte, contatti, newsletter ----------
@@ -411,7 +477,27 @@ INFO = [
 ]
 
 
+PROMOS = [
+    ("-20% su tutta la spesa del sabato", "Supermercato Gallitello", "Ogni sabato sconto del 20% su frutta, verdura e prodotti lucani a km 0. Presenta l'app alla cassa.", "Gallitello",
+     "https://images.unsplash.com/photo-1542838132-92c53300491e?w=900"),
+    ("Aperitivo 2x1 dalle 18 alle 20", "Bar Pretoria 1870", "Spritz e calici di Aglianico del Vulture 2x1 con tagliere lucano, dal lunedì al giovedì.", "Centro Storico",
+     "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=900"),
+    ("Volantino saldi: fino al -50%", "Moda Basento Outlet", "Saldi di stagione su abbigliamento e scarpe: fino al -50% e un ulteriore 10% per gli studenti UNIBAS.", "Viale del Basento",
+     "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=900"),
+]
+
+
 async def seed_v3():
+    await db.post_views.create_index([("post_id", 1), ("voter", 1)], unique=True)
+    await db.sections.update_one({"slug": "spotted", "fields.key": "where"},
+                                 {"$set": {"fields": [{"key": "message", "label": "Messaggio", "type": "textarea", "required": True, "options": []}]}})
+    if not await db.city_info.find_one({"title": "Numeri utili"}):
+        await db.city_info.insert_one({"title": "Numeri utili", "icon": "Phone", "body": "Emergenze 112 · Ambulanza 118 · Vigili del Fuoco 115 · Polizia Locale Potenza 0971 415 300 · Taxi Potenza 0971 410 410", "link": "tel:112", "hidden": False, "order": 9})
+    if not await db.promos.count_documents({}):
+        until = (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat()
+        await db.promos.insert_many([{"title": t, "business": b, "description": ds, "zone": z, "image_url": im, "valid_until": until, "link": "",
+                                      "hidden": False, "pending": False, "order": i, "by_user": "redazione", "created_at": iso_now()}
+                                     for i, (t, b, ds, z, im) in enumerate(PROMOS)])
     for c in ("live_reports", "spotlight"):
         await db[c].create_index("expires_at", expireAfterSeconds=0)
     await db.spotlight.create_index([("item_id", 1), ("user_id", 1)], unique=True)

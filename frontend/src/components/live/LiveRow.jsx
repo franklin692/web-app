@@ -13,8 +13,8 @@ export const TAG_CLS = {
   avviso: "border-red-400/40 bg-red-500/15 text-red-200",
 };
 
-export const useLive = (itemId) =>
-  useQuery({ queryKey: ["live", itemId || "all"], queryFn: async () => (await api.get("/live/reports", { params: { item_id: itemId || "", limit: itemId ? 10 : 6 } })).data, refetchInterval: 60000 });
+export const useLive = (itemId, zone = "") =>
+  useQuery({ queryKey: ["live", itemId || "all", zone], queryFn: async () => (await api.get("/live/reports", { params: { item_id: itemId || "", zone, limit: itemId ? 10 : 6 } })).data, refetchInterval: 30000, refetchOnMount: "always" });
 
 export const openLive = (item) => window.dispatchEvent(new CustomEvent("cfp-live", { detail: { item } }));
 

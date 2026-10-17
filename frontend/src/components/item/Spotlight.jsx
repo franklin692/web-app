@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api, errMsg } from "@/lib/api";
 import { sinceLabel } from "@/lib/calendar";
 import { useAuth } from "@/context/AuthContext";
+import { askLogin } from "@/hooks/useConfig";
 import { Toggle } from "@/components/admin/ui";
 import { inputCls } from "@/components/forms/Field";
 
@@ -29,26 +30,25 @@ export const Spotlight = ({ item }) => {
   const qc = useQueryClient();
   const [status, setStatus] = useState("");
   const key = ["spotlight", item.id, item.my_vote];
-  const { data } = useQuery({ queryKey: key, queryFn: async () => (await api.get(`/items/${item.id}/spotlight`)).data, enabled: !!user });
+  const { data } = useQuery({ queryKey: key, queryFn: async () => (await api.get(`/items/${item.id}/spotlight`)).data, refetchInterval: 30000, refetchOnMount: "always" });
   const run = async (fn, msg) => {
     try { await fn(); if (msg) toast.success(msg); qc.invalidateQueries({ queryKey: ["spotlight"] }); } catch (e) { toast.error(errMsg(e)); }
   };
   const box = "rounded-3xl border border-violet-500/30 bg-gradient-to-b from-violet-600/[0.12] to-transparent p-4";
-  if (!user) return null;
   const toggle = (on) => (on
     ? run(() => api.post(`/items/${item.id}/spotlight`, { status }), "Sei nello Spotlight per 3 ore ✨")
     : run(() => api.delete(`/items/${item.id}/spotlight`), "Sei uscito dallo Spotlight"));
   return (
     <section data-testid="spotlight-section" className={box}>
       <div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-violet-300" /><h3 className="font-display font-bold">Spotlight ✨ <span className="text-xs font-normal text-zinc-400">chi c'è qui</span></h3></div>
-      {data?.can_join || data?.joined ? (
+      {!user ? <p data-testid="spotlight-guest-hint" className="mt-2 text-xs text-zinc-400">Accedi e premi «Ci sono ORA 📍» per entrare nello Spotlight e salutare chi c'è.</p> : data?.can_join || data?.joined ? (
         <div className="mt-3 flex flex-col gap-2 rounded-2xl bg-black/30 p-3">
           {!data.joined && <input data-testid="spotlight-status-input" maxLength={80} value={status} onChange={(e) => setStatus(e.target.value)} placeholder="Il tuo stato (es. Al bancone, chi c'è?)" className={`${inputCls} py-2 text-sm`} />}
           <Toggle testId="spotlight-toggle" checked={!!data.joined} onChange={toggle} label={<span className="text-xs">Mostra il mio profilo nello Spotlight di questo posto per 3 ore</span>} />
         </div>
       ) : <p data-testid="spotlight-hint" className="mt-2 text-xs text-zinc-400">Premi «Ci sono ORA 📍» per entrare nello Spotlight e farti salutare.</p>}
       <ul className="mt-3 flex flex-col gap-2">
-        {data?.people.map((p) => <Person key={p.id} p={p} onWave={(x) => run(() => api.post(`/spotlight/${x.id}/wave`, {}), `Saluto inviato a @${x.username} 👋`)} />)}
+        {data?.people.map((p) => <Person key={p.id} p={p} onWave={(x) => !user ? askLogin() : run(() => api.post(`/spotlight/${x.id}/wave`, {}), `Saluto inviato a @${x.username} 👋`)} />)}
       </ul>
       {data && !data.people.length && <p data-testid="spotlight-empty" className="mt-2 text-xs text-zinc-500">Nessuno nello Spotlight in questo momento.</p>}
     </section>

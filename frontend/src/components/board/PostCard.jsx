@@ -1,6 +1,7 @@
+import { useEffect } from "react";
 import { Share2, Star, MessageCircleHeart, Link2, BadgeCheck } from "lucide-react";
 import { ReportLink } from "@/components/board/ReplySheets";
-import { imgUrl } from "@/lib/api";
+import { api, imgUrl } from "@/lib/api";
 import { timeAgo } from "@/lib/meta";
 import { shareLink } from "@/lib/share";
 
@@ -20,16 +21,19 @@ export const PostCard = ({ p, section, onReact, onReply, onReport, onSave, highl
   const photo = fields.find((f) => f.type === "photo");
   const long = fields.filter((f) => f.type === "textarea");
   const short = fields.filter((f) => !["photo", "textarea"].includes(f.type) && f.key !== "title");
+  const msgOnly = section.fields.every((f) => ["textarea", "photo"].includes(f.type));
+  const view = () => { const k = `cfp-v-${p.id}`; if (!sessionStorage.getItem(k)) { sessionStorage.setItem(k, "1"); api.post(`/posts/${p.id}/view`).catch(() => {}); } };
+  useEffect(() => { if (highlight) view(); }, [highlight]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <article data-testid={`post-card-${p.id}`} style={{ animationDelay: `${Math.min(index, 8) * 60}ms` }}
+    <article data-testid={`post-card-${p.id}`} onClick={view} style={{ animationDelay: `${Math.min(index, 8) * 60}ms` }}
       className={`fade-up relative overflow-hidden rounded-3xl border bg-[#16161F]/85 backdrop-blur-md ${highlight ? "border-pink-500/60 shadow-[0_0_30px_rgba(236,72,153,0.25)]" : "border-white/[0.08]"}`}>
       {photo && <img src={imgUrl(p.data[photo.key])} alt="" className="h-44 w-full object-cover" />}
       <div className="p-5">
         <div className="mb-3 flex items-center justify-between gap-2">
           {p.tag ? <span className="rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: section.color, borderColor: `${section.color}66`, background: `${section.color}1a` }}>{p.tag}</span> : <span />}
-          <span className="text-[11px] text-zinc-500">{timeAgo(p.created_at)}</span>
+          <span className="text-[11px] text-zinc-500">{p.views > 0 && <span data-testid={`post-views-${p.id}`} className="mr-2">👁 {p.views}</span>}{timeAgo(p.created_at)}</span>
         </div>
-        <h3 className="font-display text-lg font-bold leading-snug">{p.title}</h3>
+        {!msgOnly && <h3 className="font-display text-lg font-bold leading-snug">{p.title}</h3>}
         <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
           {short.map((f) => (
             <div key={f.key} className={f.type === "text" || f.type === "link" ? "col-span-2" : ""}>

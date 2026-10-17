@@ -13,6 +13,7 @@ import { PostFields, missingRequired } from "@/components/board/PostFields";
 import { PrimaryButton } from "@/components/forms/Field";
 import { LiveReportForm } from "@/components/live/LiveReportForm";
 import { openProposal } from "@/components/ProposalSheet";
+import { PromoForm } from "@/pages/Promos";
 
 const CAT_ORDER = ["event", "activity", "venue", "place"];
 const rank = (s) => (CAT_ORDER.indexOf(s) + 1 || 99);
@@ -25,7 +26,14 @@ export const usePickOptions = () => {
   ];
 };
 
+const GROUPS = [
+  { id: "vivi", emoji: "🎉", title: "Vivi Potenza (Eventi & Luoghi)", sub: "Eventi, serate, sagre, locali, ristoranti, luoghi di ritrovo, corsi, sport ed escursioni", g: "from-violet-600/30 to-pink-600/10", b: "border-violet-400/40" },
+  { id: "board", emoji: "📌", title: "La Bacheca (Spotted & Annunci)", sub: "Spotted, Case e coinquilini, Lavoro e staff, Passaggi auto, Chi si unisce, Mercatino UNIBAS", g: "from-pink-600/30 to-orange-500/10", b: "border-pink-400/40" },
+  { id: "info", emoji: "⚡", title: "Info, Promo & Segnalazioni", sub: "Promozioni attività e volantini, Segnala affluenza o situazione in un luogo, Aggiorna prezzi benzina", g: "from-orange-500/30 to-emerald-500/10", b: "border-orange-400/40" },
+];
+
 const QUICK = [
+  { id: "quick:promo", type: "promo", title: "Promozione / Volantino", sub: "Offerte e sconti di un'attività", icon: "BadgePercent", color: "#F97316" },
   { id: "quick:live", type: "live", title: "Segnala affluenza / situazione", sub: "Live per 3 ore", icon: "Radio", color: "#EC4899" },
   { id: "quick:fuel", type: "fuel", title: "Aggiorna prezzo benzina", sub: "Osservatorio prezzi", icon: "Fuel", color: "#10B981" },
 ];
@@ -39,13 +47,6 @@ export const KindPicker = ({ options, onPick }) => (
         <span><span className="block font-display text-[15px] font-bold leading-tight text-white">{o.title}</span><span className="text-[11px] text-zinc-400">{o.sub}</span></span>
       </button>
     ))}
-  </div>
-);
-
-const Block = ({ n, title, children }) => (
-  <div className="flex flex-col gap-3">
-    <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-400"><span className="text-pink-400">{n}.</span> {title}</p>
-    {children}
   </div>
 );
 
@@ -72,17 +73,18 @@ export const AddSheet = ({ open, onOpenChange, prefillThemes = [] }) => {
   const nav = useNavigate();
   const options = usePickOptions();
   const [opt, setOpt] = useState(null);
+  const [group, setGroup] = useState(null);
   const [form, setForm] = useState(EMPTY_ITEM);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
-  useEffect(() => { if (!open) setTimeout(() => { setOpt(null); setDone(null); }, 300); }, [open]);
+  useEffect(() => { if (!open) setTimeout(() => { setOpt(null); setGroup(null); setDone(null); }, 300); }, [open]);
 
   const cats = Object.fromEntries((cfg?.categories || []).map((c) => [c.slug, c]));
   const close = () => onOpenChange(false);
   const pick = (o) => {
-    if (o.type === "fuel") { close(); return nav("/info-utili"); }
+    if (o.type === "fuel") { close(); return nav("/info-utili?tab=fuel"); }
     setOpt(o);
-    if (o.type !== "live") setForm(o.type === "item" ? { ...emptyFor(o), themes: prefillThemes } : emptyFor(o));
+    if (o.type === "item" || o.type === "post") setForm(o.type === "item" ? { ...emptyFor(o), themes: prefillThemes } : emptyFor(o));
   };
   const submit = async () => {
     const err = validateEntry(opt, form, cats);
@@ -109,10 +111,24 @@ export const AddSheet = ({ open, onOpenChange, prefillThemes = [] }) => {
           <PrimaryButton data-testid="add-success-close" onClick={close}>Chiudi</PrimaryButton>
         </div>
       ) : !opt ? (
-        <div className="flex flex-col gap-7">
-          <Block n="1" title="Pubblica in città"><KindPicker options={options.filter((o) => o.type === "item")} onPick={pick} /></Block>
-          <Block n="2" title="Segnalazione rapida live"><KindPicker options={QUICK} onPick={pick} /></Block>
-          <Block n="3" title="Pubblica in Bacheca"><KindPicker options={options.filter((o) => o.type === "post")} onPick={pick} /></Block>
+        <div className="flex flex-col gap-6">
+          {!group ? (
+            <div className="flex flex-col gap-3">
+              {GROUPS.map((g, i) => (
+                <button key={g.id} data-testid={`add-group-${g.id}`} onClick={() => setGroup(g.id)} style={{ animationDelay: `${i * 60}ms` }}
+                  className={`fade-up flex items-center gap-4 rounded-3xl border ${g.b} bg-gradient-to-br ${g.g} p-5 text-left transition-transform active:scale-[0.98]`}>
+                  <span className="text-4xl">{g.emoji}</span>
+                  <span><span className="block font-display text-lg font-bold leading-tight text-white">{g.title}</span><span className="text-xs text-zinc-300/80">{g.sub}</span></span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <button data-testid="add-group-back-button" onClick={() => setGroup(null)} className="inline-flex w-fit items-center gap-1 text-sm text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /> Indietro</button>
+              <p className="font-display text-lg font-bold">{GROUPS.find((g) => g.id === group).title}</p>
+              <KindPicker options={group === "info" ? QUICK : options.filter((o) => o.type === (group === "vivi" ? "item" : "post"))} onPick={pick} />
+            </div>
+          )}
           <div className="flex gap-2 border-t border-white/5 pt-5">
             <button data-testid="add-propose-button" onClick={() => { close(); openProposal("altro"); }} className={`${extra} border-amber-400/40 bg-amber-400/10 text-amber-100`}><Lightbulb className="h-4 w-4" /> 💡 Proponi una nuova sezione/categoria</button>
             <button data-testid="add-contact-button" onClick={() => { close(); nav("/contatti"); }} className={`${extra} border-orange-400/40 bg-orange-500/10 text-orange-100`}><Mail className="h-4 w-4" /> 📩 Contattaci / Collabora</button>
@@ -121,7 +137,7 @@ export const AddSheet = ({ open, onOpenChange, prefillThemes = [] }) => {
       ) : (
         <div className="flex flex-col gap-5">
           <button data-testid="add-back-button" onClick={() => setOpt(null)} className="inline-flex w-fit items-center gap-1 text-sm text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /> Cambia tipo</button>
-          {opt.type === "live" ? <LiveReportForm onDone={close} /> : (
+          {opt.type === "live" ? <LiveReportForm onDone={close} /> : opt.type === "promo" ? <PromoForm onDone={close} /> : (
             <>
               <EntryForm opt={opt} form={form} setForm={setForm} />
               <PrimaryButton data-testid="add-submit-button" onClick={submit} disabled={busy}>

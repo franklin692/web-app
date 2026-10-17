@@ -9,7 +9,7 @@ TOWNS = [("Potenza", "Potenza"), ("Abriola", "Potenza e dintorni"), ("Avigliano"
          ("Sasso di Castalda", "Melandro"), ("Castelmezzano", "Dolomiti Lucane"), ("Pietrapertosa", "Dolomiti Lucane")]
 
 BLOCKS = [("alert", "Avviso"), ("live", "Potenza Live"), ("poll", "Sondaggio del Giorno"), ("banner", "Banner sponsor"), ("featured", "In Evidenza stasera"),
-          ("trending", "Classifica Live"), ("vivi", "Vivi Potenza"), ("board", "Dalla Bacheca"), ("list", "Tutto a Potenza")]
+          ("trending", "Classifica Live"), ("vivi", "Vivi Potenza"), ("board", "Dalla Bacheca"), ("boardtop", "📌 Dalla Bacheca (I più cliccati)"), ("list", "Tutto a Potenza")]
 
 DEFAULT_CONFIG = {
     "_id": "app", "app_name": "Cosa Fare a Potenza", "logo_url": "",
@@ -54,7 +54,7 @@ def S(slug, name, icon, color, description, order, fields, tags, reply, approval
 
 DEFAULT_SECTIONS = [
     S("spotted", "Spotted", "HeartHandshake", "#EC4899", "Hai incrociato qualcuno? Ritrovalo qui 💘", 0,
-      [F("where", "Dove", required=True), F("when", "Quando"), F("who", "Chi cerco"), F("message", "Messaggio", "textarea", True)],
+      [F("message", "Messaggio", "textarea", True)],
       ["UNIBAS", "McDonald's", "Centro Storico", "Autobus/Treno", "Locali"], "Sono io / La conosco", True, 14),
     S("case", "Case & Coinquilini", "House", "#8B5CF6", "Stanze per studenti, affitti e coinquilini", 1,
       [F("title", "Titolo", required=True), F("type", "Tipo", "select", options=["Stanza singola", "Stanza doppia", "Appartamento", "Posto letto"]),

@@ -17,7 +17,7 @@ import { AdminEditor } from "@/components/admin/AdminEditor";
 
 const TABS = [
   ["queue", "Coda", false], ["reports", "Segnalazioni", false], ["manage", "Esplora", false], ["posts", "Bacheca", false],
-  ["archive", "Archivio Eventi Passati", false], ["inbox", "Proposte & Contatti", false], ["city", "Benzina & Info", false],
+  ["archive", "Archivio Eventi Passati", false], ["inbox", "Proposte & Contatti", false], ["city", "Promo, Benzina & Info", false],
   ["polls", "Sondaggi", false], ["stats", "Statistiche", false],
   ["vivi", "Vivi Potenza", true], ["cats", "Categorie", true], ["sections", "Sezioni Bacheca", true], ["zones", "Zone & Paesi", true], ["home", "Home", true],
   ["banners", "Banner & Sponsor", true], ["texts", "Testi & Regole", true], ["users", "Utenti", true], ["audit", "Registro", true], ["backup", "Backup", true],

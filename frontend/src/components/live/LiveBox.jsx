@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Radio, Plus } from "lucide-react";
 import { useLive, LiveRow, openLive } from "@/components/live/LiveRow";
 
@@ -18,12 +19,13 @@ export const PotenzaLiveBox = ({ title }) => {
       </div>
       {data && !reports.length && <p data-testid="live-box-empty" className="rounded-2xl border border-dashed border-white/10 py-6 text-center text-xs text-zinc-500">Nessuna segnalazione recente. Sei in giro? Racconta com'è la situazione.</p>}
       <ul className="flex flex-col gap-2">{reports.slice(0, 4).map((r) => <LiveRow key={r.id} r={r} />)}</ul>
+      <Link to="/info/live" data-testid="live-box-all-link" className="mt-3 inline-flex text-xs font-bold text-pink-300">Tutte le segnalazioni →</Link>
     </section>
   );
 };
 
 export const ItemLive = ({ item }) => {
-  const { data } = useLive(item.id);
+  const { data } = useLive(item.id, item.zone || item.town || "");
   const reports = data?.reports || [];
   return (
     <div data-testid="item-live-section" className="flex flex-col gap-2">

@@ -54,7 +54,7 @@ export default function ViviTheme() {
           </div>
         )}
       </div>
-      <div className="sticky top-0 z-30 border-b border-white/5 bg-[#0B0B0F]/85 px-5 py-3 backdrop-blur-xl">
+      <div className="sticky top-12 z-30 border-b border-white/5 bg-[#0B0B0F]/85 px-5 py-3 backdrop-blur-xl">
         <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5">
           {WHEN.map(([k, l]) => <button key={k} data-testid={`vivi-when-${k}`} onClick={() => setWhen(k)} className={chip(when === k)}>{l}</button>)}
         </div>

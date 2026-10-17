@@ -870,7 +870,8 @@ def title_of(sec, data):
     for f in sec.get("fields", []):
         if f.get("type") in ("text", "place", "select") and str(data.get(f["key"], "")).strip():
             return str(data[f["key"]])[:140]
-    return sec["name"]
+    msg = str(data.get("message", "")).strip()
+    return (msg[:80] + ("…" if len(msg) > 80 else "")) if msg else sec["name"]
 
 
 def clean_post(sec, data, tag, old=None):

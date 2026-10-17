@@ -9,7 +9,7 @@ import { ItemCard } from "@/components/ItemCard";
 import { FeaturedCarousel } from "@/components/explore/FeaturedCarousel";
 import { DualRanking } from "@/components/explore/DualRanking";
 import { PollCard } from "@/components/explore/PollCard";
-import { AlertBar, BoardShortcuts } from "@/components/explore/HomeBlocks";
+import { AlertBar, BoardShortcuts, BoardTop } from "@/components/explore/HomeBlocks";
 import { SurpriseSheet } from "@/components/explore/SurpriseSheet";
 import { ExploreFooter } from "@/components/explore/ExploreFooter";
 import { PotenzaLiveBox } from "@/components/live/LiveBox";
@@ -85,6 +85,7 @@ export default function Explore() {
       case "trending": return home.data ? <DualRanking key={b.id} title={b.label} live={home.data.live} upcoming={home.data.upcoming} onOpen={open} /> : null;
       case "vivi": return <ViviShortcuts key={b.id} title={b.label} themes={cfg.themes} />;
       case "board": return <BoardShortcuts key={b.id} title={b.label} sections={cfg.sections} />;
+      case "boardtop": return <BoardTop key={b.id} title={b.label} />;
       case "list":
         return (
           <section key={b.id} className="mt-8 px-5">
@@ -105,7 +106,7 @@ export default function Explore() {
   return (
     <div data-testid="explore-page">
       <Header cfg={cfg} />
-      <div className="sticky top-0 z-30 border-b border-white/5 bg-[#0B0B0F]/85 px-5 pb-3 pt-3 backdrop-blur-xl">
+      <div className="sticky top-12 z-30 border-b border-white/5 bg-[#0B0B0F]/85 px-5 pb-3 pt-3 backdrop-blur-xl">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
           <input data-testid="search-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca eventi, locali, zone, paesi…"

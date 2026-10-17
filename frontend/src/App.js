@@ -18,6 +18,10 @@ import { useEffect } from "react";
 import Profile from "@/pages/Profile";
 import Admin from "@/pages/Admin";
 import Utility from "@/pages/Utility";
+import InfoHub from "@/pages/InfoHub";
+import Promos from "@/pages/Promos";
+import LiveCity from "@/pages/LiveCity";
+import { TopBar } from "@/components/TopBar";
 import Contact from "@/pages/Contact";
 import { LiveSheet } from "@/components/live/LiveSheet";
 import { ProposalSheet } from "@/components/ProposalSheet";
@@ -26,7 +30,7 @@ function Shell() {
   const [addOpen, setAddOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [prefill, setPrefill] = useState([]);
-  const { user, ready } = useAuth();
+  const { user } = useAuth();
   const cfg = useConfig();
   useEffect(() => { if (cfg?.app_name) document.title = cfg.app_name; }, [cfg?.app_name]);
   useEffect(() => {
@@ -43,6 +47,7 @@ function Shell() {
     <div className="min-h-screen bg-[#050507]">
       <div className="app-frame relative mx-auto min-h-screen w-full max-w-md overflow-x-hidden bg-[#0B0B0F] pb-32 text-zinc-100 md:border-x md:border-white/5">
         <div className="grain pointer-events-none fixed inset-0 z-0 mx-auto max-w-md" />
+        <TopBar />
         <main className="relative z-10">
           <Routes>
             <Route path="/" element={<Explore />} />
@@ -56,11 +61,14 @@ function Shell() {
             <Route path="/profilo" element={<Profile />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/info-utili" element={<Utility />} />
+            <Route path="/info" element={<InfoHub />} />
+            <Route path="/info/promo" element={<Promos />} />
+            <Route path="/info/live" element={<LiveCity />} />
             <Route path="/contatti" element={<Contact />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
-        <BottomNav onPlus={() => { if (!ready) return; setPrefill([]); user ? setAddOpen(true) : setLoginOpen(true); }} />
+        <BottomNav />
         <LoginPrompt open={loginOpen} onOpenChange={setLoginOpen} />
         <AddSheet open={addOpen} onOpenChange={setAddOpen} prefillThemes={prefill} />
         <LiveSheet />

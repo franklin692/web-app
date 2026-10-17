@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Fuel, Info, ExternalLink, Loader2, Trophy } from "lucide-react";
 import { toast } from "sonner";
@@ -97,7 +97,8 @@ const InfoList = () => {
 
 export default function Utility() {
   const nav = useNavigate();
-  const [tab, setTab] = useState("fuel");
+  const [sp] = useSearchParams();
+  const [tab, setTab] = useState(sp.get("tab") === "info" ? "info" : "fuel");
   return (
     <div data-testid="utility-page" className="px-5 pt-6">
       <button data-testid="utility-back-button" onClick={() => nav(-1)} className="mb-4 inline-flex items-center gap-1 text-sm text-zinc-400"><ArrowLeft className="h-4 w-4" /> Indietro</button>

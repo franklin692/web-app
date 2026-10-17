@@ -12,6 +12,11 @@ const CONF = {
     fields: [["name", "Nome (es. Q8 Gallitello)"], ["brand", "Marchio"], ["address", "Indirizzo"], ["zone", "Zona"]],
     line: (d) => `${d.address} · B ${d.prices.benzina ?? "—"} · D ${d.prices.diesel ?? "—"} · GPL ${d.prices.gpl ?? "—"}`,
   },
+  promo: {
+    title: "Promozioni & Volantini", empty: { title: "", business: "", description: "", image_url: "", valid_until: "", link: "", zone: "", hidden: false },
+    fields: [["title", "Titolo promo"], ["business", "Attività"], ["description", "Descrizione"], ["image_url", "URL immagine / volantino"], ["valid_until", "Valida fino al (AAAA-MM-GG)"], ["zone", "Zona"], ["link", "Link"]],
+    line: (d) => `${d.pending ? "⏳ DA APPROVARE (rendi visibile) · " : ""}${d.business} · fino al ${d.valid_until || "—"}`,
+  },
   info: {
     title: "Info pratiche città", empty: { title: "", icon: "Info", body: "", link: "", hidden: false },
     fields: [["title", "Titolo (es. Scale Mobili)"], ["icon", "Icona lucide (es. TrainFront, Pill)"], ["link", "Link (facoltativo)"]],
@@ -65,7 +70,7 @@ export const CityAdmin = () => {
   return (
     <div data-testid="admin-city" className="flex flex-col gap-3">
       <div className="flex gap-2">
-        {[["fuel", "⛽ Distributori"], ["info", "ℹ️ Info pratiche"]].map(([k, l]) => <button key={k} data-testid={`city-tab-${k}`} onClick={() => setTab(k)} className={`flex-1 rounded-xl border py-1.5 text-xs font-semibold ${tab === k ? "border-emerald-400 bg-emerald-500/20" : "border-white/10 text-zinc-500"}`}>{l}</button>)}
+        {[["promo", "🔥 Promo"], ["fuel", "⛽ Distributori"], ["info", "ℹ️ Info pratiche"]].map(([k, l]) => <button key={k} data-testid={`city-tab-${k}`} onClick={() => setTab(k)} className={`flex-1 rounded-xl border py-1.5 text-xs font-semibold ${tab === k ? "border-emerald-400 bg-emerald-500/20" : "border-white/10 text-zinc-500"}`}>{l}</button>)}
       </div>
       <SimpleAdmin key={tab} coll={tab} />
     </div>
