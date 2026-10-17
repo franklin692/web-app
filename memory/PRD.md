@@ -20,3 +20,20 @@ v2 (approved plan "Cosa Fare a Potenza 2.0"): Bacheca with configurable sections
 - P1: Mappa Radar (Leaflet dark, pins, flame halo); "Copia-Incolla Magico" AI importer; Roulette "Risolvi-Serata"; Pass Vantaggi
 - P2: Push notifications, venue manager profiles, sponsor online payments, advanced stats, password reset via email
 - Tech: split server.py into routers; explicit CORS origins; drag-and-drop reorder
+
+
+## v3.0 – Città viva, live e pratica (Oct 2026)
+- AI (Gemini/Lucy, AI moderation) REMOVED entirely; zero AI cost. Old ai_review data kept in DB, not shown.
+- New "+" menu in blocks (Pubblica in città / Segnalazione rapida live / Bacheca) + Proponi & Contattaci.
+- Votes "Ci sarò 👋" / "Ci sono ORA 📍"; Explore dual ranking ADESSO (live) / Dove si va (7 days); "Da scoprire ✨".
+- Segui 🔔 (venues/places) vs Salva ⭐ (events, courses, board posts); calendar ICS + Google link; Profile tabs Messaggi/Seguiti/Salvati/I miei annunci/Account.
+- Auto-archive past events (status archived, on read, no cron); admin Archivio with delete & duplicate-with-new-date.
+- Potenza Live reports (3h TTL, confirm once), Spotlight (3h, needs "Ci sono ORA", waves to inbox), Spotlight filter.
+- /info-utili: fuel stations (community prices, sort, update) + Info pratiche; admin CRUD; seeded 5 stations, 4 info cards, 2 fresh live reports each startup.
+- Proposals, /contatti (form + super-admin quick links), newsletter (Explore box, register, profile) – emails collected only; admin "Proposte & Contatti" with CSV.
+- Sorprendimi 🎲, "Segnala info errata o abuso" for guests too, Spotted privacy note, admin Risposte tab removed.
+- Backend new code in backend/v3.py. Tests: backend/tests/test_v3_api.py 13/13, v2/vivi regression 35/35 (run with -n 0).
+
+## Backlog
+- P1: Newsletter sending from platform; notifications for Seguiti; moderation of false live reports
+- P2: Official fuel price import (MIMIT open data); map with live reports & stations; venue pages with stats

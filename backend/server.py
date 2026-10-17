@@ -1257,6 +1257,7 @@ async def delete_account(body: ConfirmIn, user: User = Depends(require_user)):
     await db.users.delete_one({"_id": ObjectId(user.id)})
     await db.posts.delete_many({"owner_user": user.id})
     await db.post_replies.delete_many({"from_user": user.id})
+    await purge_user(user.id, user.email)
     return {"ok": True}
 
 
@@ -1594,6 +1595,7 @@ async def admin_delete_user(uid: str, a=Depends(require_super)):
     await db.users.delete_one({"_id": u["_id"]})
     await db.posts.delete_many({"owner_user": uid})
     await db.post_replies.delete_many({"from_user": uid})
+    await purge_user(uid, u["email"])
     await db.items.update_many({"created_by": f"u:{uid}"}, {"$set": {"created_by": "deleted"}})
     await audit(a, "elimina utente", u["username"])
     return {"ok": True}
@@ -1656,6 +1658,16 @@ async def admin_stats(a=Depends(require_admin)):
             "votes_active": await db.votes.count_documents({"expires_at": {"$gt": now_utc()}}),
             "pending": await db.items.count_documents({"status": "pending"}) + await db.posts.count_documents({"status": "pending"}),
             "reports_open": await db.reports.count_documents({"status": "open"})}
+
+
+async def purge_user(uid, email):
+    voter = f"u:{uid}"
+    await db.post_replies.delete_many({"owner_user": uid})
+    for c in ("spotlight", "live_reports"):
+        await db[c].delete_many({"user_id": uid})
+    for c in ("votes", "saves", "post_saves"):
+        await db[c].delete_many({"voter": voter})
+    await db.newsletter.delete_many({"$or": [{"user_id": uid}, {"email": email}]})
 
 
 # ---------- startup ----------

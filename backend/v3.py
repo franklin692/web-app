@@ -9,7 +9,7 @@ from pymongo.errors import DuplicateKeyError
 
 from server import (api, app, db, User, get_identity, need_voter, require_member, require_admin, require_user, get_public_item,
                     present, clean, load_public_items, DATED, oid, iso_now, now_utc, doc_out, get_config, audit, post_out,
-                    public_post, post_saved, EMAIL_RE, client_ip)
+                    public_post, public_post_q, EMAIL_RE, client_ip)
 
 LIVE_TAGS = {"pieno": "🔥 Pieno / Molta gente", "parcheggio": "🚗 Parcheggio pieno / Traffico", "fila": "⏳ Fila all'ingresso",
              "musica": "🎶 Musica / Serata top", "avviso": "⚠️ Avviso / Disservizio in zona"}
@@ -109,6 +109,7 @@ async def here_vote(item_id, user):
 
 @api.get("/items/{item_id}/spotlight")
 async def get_spotlight(item_id: str, user: User = Depends(require_member)):
+    item_id = (await get_public_item(item_id)).id
     docs = await db.spotlight.find({"item_id": item_id, "expires_at": {"$gt": now_utc()}}).sort("created_at", -1).to_list(100)
     ids = [str(d["_id"]) for d in docs]
     waved = {w["spot_id"] async for w in db.waves.find({"from_user": user.id, "spot_id": {"$in": ids}})}
@@ -181,14 +182,8 @@ async def save_post(pid: str, request: Request):
 async def my_saved_posts(request: Request):
     voter = need_voter(await get_identity(request))
     ids = [s["post_id"] async for s in db.post_saves.find({"voter": voter}).sort("created_at", -1)]
-    out = []
-    for pid in ids:
-        try:
-            d = await public_post(pid)
-        except HTTPException:
-            continue
-        out.append(post_out(d, saved=pid in await post_saved(voter, [pid])))
-    return out
+    docs = {str(d["_id"]): d for d in await db.posts.find({**public_post_q(), "_id": {"$in": [oid(i) for i in ids]}}).to_list(500)}
+    return [post_out(docs[i], saved=True) for i in ids if i in docs]
 
 
 # ---------- Sorprendimi ----------
@@ -196,9 +191,9 @@ async def my_saved_posts(request: Request):
 async def surprise(request: Request):
     pres = await present(await load_public_items(), await get_identity(request))
     pool = [p for p in pres if p["kind"] in DATED and (p["_tonight"] or p["_weekend"])]
-    if len(pool) < 3:
+    if len(pool) < 6:
         rest = [p for p in pres if p["kind"] not in DATED]
-        pool += random.sample(rest, min(3 - len(pool), len(rest)))
+        pool += random.sample(rest, min(max(3, 6 - len(pool)), len(rest)))
     return [clean(p) for p in random.sample(pool, min(3, len(pool)))]
 
 

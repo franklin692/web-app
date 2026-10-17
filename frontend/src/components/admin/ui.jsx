@@ -31,9 +31,9 @@ export const H = ({ children }) => <p className="mb-2 mt-1 text-[11px] font-bold
 export const Inp = ({ testId, className = "", ...p }) => <input data-testid={testId} className={`${inputCls} py-2.5 ${className}`} {...p} />;
 
 export const Toggle = ({ checked, onChange, label, testId }) => (
-  <button type="button" data-testid={testId} onClick={() => onChange(!checked)} className="flex shrink-0 items-center gap-2 text-sm text-zinc-200">
-    <span className={`relative h-6 w-11 rounded-full transition-colors ${checked ? "bg-gradient-to-r from-violet-600 to-pink-600" : "bg-white/10"}`}>
-      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`} />
+  <button type="button" role="switch" aria-checked={!!checked} data-testid={testId} onClick={() => onChange(!checked)} className="flex shrink-0 items-center gap-2 text-left text-sm text-zinc-200">
+    <span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? "bg-gradient-to-r from-violet-600 to-pink-600" : "bg-white/10"}`}>
+      <span className={`absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`} />
     </span>
     {label}
   </button>

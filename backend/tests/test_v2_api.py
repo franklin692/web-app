@@ -125,7 +125,7 @@ class TestBoard:
         inbox = requests.get(f"{BASE_URL}/me/inbox", headers=H(ctx["alice"])).json()
         assert inbox[0]["message"] == "TEST_ ci sto" and inbox[0]["from_name"] == f"TEST_bob_{RUN}"
         assert requests.get(f"{BASE_URL}/me/inbox", headers=H(ctx["bob"])).json() == []
-        assert any(x["post_id"] == pid for x in requests.get(f"{BASE_URL}/admin/replies", headers=H(ctx["admin"])).json())
+        assert requests.get(f"{BASE_URL}/admin/replies", headers=H(ctx["admin"])).status_code in (404, 405)  # v3: admin replies removed
         requests.post(f"{BASE_URL}/me/inbox/read", headers=H(ctx["alice"]))
         assert requests.get(f"{BASE_URL}/me/unread", headers=H(ctx["alice"])).json()["count"] == 0
 
@@ -172,7 +172,8 @@ class TestReports:
     def test_report_and_block(self, ctx):
         requests.post(f"{BASE_URL}/board/unisciti/posts", headers=H(ctx["bob"]), json={"data": {"activity": "TEST_calcetto"}})
         pid = requests.get(f"{BASE_URL}/board/unisciti?q=TEST_calcetto").json()["posts"][0]["id"]
-        assert requests.post(f"{BASE_URL}/reports", json={"target_type": "post", "target_id": pid}).status_code == 401
+        # v3: guests may report (device id required)
+        assert requests.post(f"{BASE_URL}/reports", json={"target_type": "post", "target_id": pid}).status_code == 400
         assert requests.post(f"{BASE_URL}/reports", headers=H(ctx["alice"]), json={"target_type": "post", "target_id": pid, "reason": "TEST spam"}).status_code == 200
         reps = requests.get(f"{BASE_URL}/admin/reports", headers=H(ctx["admin"])).json()
         rep = next(r for r in reps if r["target_id"] == pid)
@@ -278,7 +279,7 @@ class TestConfigPut:
         at = ctx["admin"]
         cfg = requests.get(f"{BASE_URL}/admin/config", headers=H(at)).json()
         home = cfg["home"]; home["title"] = "TEST Titolo"; home["alert"] = {"active": True, "text": "TEST allerta", "start": "", "end": ""}
-        sch = home.get("schedules", []); home["schedules"] = [x for x in sch if x.get("date") != "" or str(x.get("day")) != "4"]
+        sch = home.get("schedules", []); home["schedules"] = []  # day-independent
         requests.put(f"{BASE_URL}/admin/config", headers=H(at), json={"home": home})
         h = requests.get(f"{BASE_URL}/config").json()["home"]
         assert h["title"] == "TEST Titolo" and h["alert"]["text"] == "TEST allerta"

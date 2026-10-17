@@ -4,7 +4,6 @@ import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { api, errMsg } from "@/lib/api";
 import { sinceLabel } from "@/lib/calendar";
-import { askLogin } from "@/hooks/useConfig";
 import { useAuth } from "@/context/AuthContext";
 import { Toggle } from "@/components/admin/ui";
 import { inputCls } from "@/components/forms/Field";
@@ -35,14 +34,7 @@ export const Spotlight = ({ item }) => {
     try { await fn(); if (msg) toast.success(msg); qc.invalidateQueries({ queryKey: ["spotlight"] }); } catch (e) { toast.error(errMsg(e)); }
   };
   const box = "rounded-3xl border border-violet-500/30 bg-gradient-to-b from-violet-600/[0.12] to-transparent p-4";
-  if (!user) {
-    return (
-      <button data-testid="spotlight-login-teaser" onClick={askLogin} className={`${box} flex items-center gap-3 text-left`}>
-        <Sparkles className="h-5 w-5 shrink-0 text-violet-300" />
-        <span className="text-sm text-zinc-300"><b className="text-white">Spotlight ✨</b> · Accedi per vedere chi c'è qui adesso</span>
-      </button>
-    );
-  }
+  if (!user) return null;
   const toggle = (on) => (on
     ? run(() => api.post(`/items/${item.id}/spotlight`, { status }), "Sei nello Spotlight per 3 ore ✨")
     : run(() => api.delete(`/items/${item.id}/spotlight`), "Sei uscito dallo Spotlight"));

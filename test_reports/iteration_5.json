@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 5 (v3, AI removed). Tested backend and frontend on mobile (390x844). Backend: the new suite test_v3_api.py passed 13/13. It covers home live/upcoming, Potenza Live reports (auth, zone validation, confirm once, self-confirm 400, guest 401, item-linked reports), Spotlight (needs a 'here' vote, guest 401, wave goes to the recipient inbox with kind 'wave', duplicate 409, self-wave 400, un-voting removes the user, /spotlight/places), fuel sort/price validation (0.5-4) and admin simple CRUD for fuel/info, proposals/contact/newsletter (guest, deduplicated, case-insensitive), /me/newsletter, register with newsletter:true, admin inbox/done/delete/CSV, post save toggle and /me/saved-posts, guest report then admin 'resolve', archived events (hidden from /items, /vivi and item GET; listed in admin status=archived), event_window default end (23:59, or 04:00 next day if start >=20:00), /surprise (<=3 unique items), and AI/admin-replies endpoints returning 404/405. Regression: test_v2_api + test_vivi_api pass 35/35 when run serially (-n 0), after updating 3 outdated assertions. Frontend: all requested flows were tested and work. Explore live box (guest Segnala opens the login prompt), dual ranking tabs, Sorprendimi plus reroll, Spotlight chip (guest gets the login prompt; logged-in users see places with active people), Benzina chip goes to /info-utili, newsletter subscribe, footer link to /contatti. '+' sheet shows 3 blocks plus Proponi/Contattaci. Live report via '+' appears in the Explore box. Fuel goes to /info-utili, the proposal is submitted, Contattaci goes to /contatti. Item detail: vote labels, Segui 🔔 on venues and Salva ⭐ on events, calendar ICS download (correct UTC times) and Google link. Spotlight: join with a status, a second user sends a wave, the first user sees it in Profilo→Messaggi. Item 'Segnala situazione' works. Guest 'Segnala info errata o abuso' with a reason works. Profile Seguiti/Salvati keep venues and events/posts apart. Account newsletter toggle persists. Register newsletter toggle works. Bacheca: proposal card, post save star, report link, Spotted privacy note text. Vivi: Benzina tile, active themes on top, empty themes show 'Esplora o proponi ✨', proposal card. Admin: tab list correct with no Risposte and no AI button. Archive duplicate opens 'Ripubblica con nuova data' with the date empty and the title prefilled; archive delete works. Inbox: lists, newsletter count, CSV download; contact links editor is under the Contatti sub-tab and its email then shows on /contatti. Benzina & Info CRUD works. Segnalazioni shows Risolta buttons. Price update from /info-utili (comma decimal) re-sorts the list. I fixed one UI bug: the Toggle knob was misplaced.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/surprise", "issue": "If at least 3 tonight/weekend events exist, the pool is events only. Today exactly 3 exist, so 'Pesca di nuovo' always returns the same 3 items, just reordered. Suggested fix: always mix in some non-dated items (venues/places/activities) so the reroll changes the results."},
+      {"endpoint": "DELETE /api/admin/users/{uid} and POST /api/me/delete", "issue": "They do not clean newsletter, spotlight, live_reports, post_saves/saves/votes, or inbox messages addressed to the user (post_replies where owner_user equals the user, e.g. waves). Orphan records remain (TTL covers spotlight/live only)."},
+      {"endpoint": "GET /api/items/{id}/spotlight", "issue": "It does not check that the item exists and is public (returns an empty list for any id). Low risk."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "admin/ui.jsx Toggle (used for register-newsletter-toggle, account-newsletter-toggle, spotlight-toggle, admin 'Visibile' toggles)", "issue": "FIXED by testing agent. The knob had no `left`, so its static position followed the button's text-align:center. It sat about 22px off: in the OFF state it looked ON, and in the ON state it overflowed onto the label text. Added left-0, shrink-0 on the track, text-left, plus role=switch and aria-checked.", "selector": "[data-testid=register-newsletter-toggle]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Item detail (guest)", "issues": ["Guests see a 'Spotlight ✨ · Accedi per vedere chi c'è qui' teaser card. The spec says guests don't see Spotlight. No people are leaked, but remove the teaser if the spec must be followed strictly."]},
+      {"screen": "Forms", "issues": ["The live report zone uses a native <select>, and event date/time use native inputs instead of shadcn Select/Calendar (this existed before)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_v3_api.py", "/app/backend/tests/test_v2_api.py", "/app/backend/tests/test_vivi_api.py", "/app/test_reports/pytest/pytest_v3.xml", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(minor) /api/surprise: mix non-dated items into the pool so a reroll gives different results when few events exist",
+    "(minor) Clean up user-related v3 data (newsletter, spotlight, live_reports, saves, inbox) when deleting a user or account",
+    "(optional) Decide whether guests should see the Spotlight teaser at all (spec: hidden for guests)",
+    "(test infra) backend/tests/test_cosafare_api.py is the obsolete v1 suite (PIN admin, old spotted API) and fails massively; delete it or rewrite it. test_v2_api's backup/restore test breaks other modules when run under the default pytest.ini xdist -n 2 (each worker has a different RUN id, and a restore drops the other worker's users), so run it with -n 0"
+  ],
+  "critical_code_review_comments": [
+    "server.py is still over 1750 lines and v3.py is 450. Consider splitting server.py (auth, items, board, admin) into routers.",
+    "/me/saved-posts does N+1 queries (public_post plus post_saved per id). Use a single $in query.",
+    "admin_delete_post does not delete post_saves for that post (they are filtered out at read time, but they pile up).",
+    "Reports can target archived/rejected items, since find_one has no status filter. This is acceptable but worth noting.",
+    "seed_v3 deletes and re-inserts the 2 seed live reports on every backend start, so they reappear 20/45 minutes old after each hot reload. Fine for a demo; remove before production."
+  ],
+  "updated_files": ["/app/frontend/src/components/admin/ui.jsx", "/app/backend/tests/test_v3_api.py", "/app/backend/tests/test_v2_api.py", "/app/backend/tests/test_cosafare_api.py"],
+  "success_rate": {"backend": "100% (13/13 v3 + 35/35 v2/vivi regression run serially)", "frontend": "100% of tested flows after the Toggle fix (one UI bug found and fixed)"},
+  "test_credentials": "Super Admin admin/admin123 (from /app/memory/test_credentials.md). Regular users were registered on the fly and then deleted.",
+  "seed_data_creation": "None kept. Test users (TEST_v3*, TEST_uia/uib), their votes/saves/spotlight/waves/live reports, TEST proposals/contacts/reports, test newsletter emails, the TEST station/info and TEST events were all deleted. Contact links were reset to empty. Tamoil diesel was restored to 1.672; Esso diesel was restored but now shows updated_by 'redazione'.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app && REACT_APP_BACKEND_URL=<url> python -m pytest backend/tests/test_v3_api.py backend/tests/test_v2_api.py backend/tests/test_vivi_api.py -n 0. test_v3 uses direct pymongo (mongodb://localhost:27017, test_database) for cleanup. For frontend login, set localStorage cfp_token and then goto. The contact links editor is in Admin → Proposte & Contatti → inbox-tab-contacts (superadmin only). Archive delete uses window.confirm (accept the dialog). The station price form uses price-value-input with a fuel select; it accepts a comma decimal."
+}
